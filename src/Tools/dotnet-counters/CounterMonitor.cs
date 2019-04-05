@@ -46,11 +46,11 @@ namespace Microsoft.Diagnostics.Tools.Counters
 
             catch (OperationCanceledException)
             {
-                try
-                {
-                    EventPipeClient.DisableTracingToFile(_processId, sessionId);    
-                }
-                catch (Exception) {} // Swallow all exceptions for now.
+                // try
+                // {
+                //     EventPipeClient.DisableTracingToFile(_processId, sessionId);    
+                // }
+                // catch (Exception) {} // Swallow all exceptions for now.
                 
                 console.Out.WriteLine($"Tracing stopped. Trace files written to {outputPath}");
                 console.Out.WriteLine($"Complete");
@@ -81,6 +81,8 @@ namespace Microsoft.Diagnostics.Tools.Counters
             outputPath = Path.Combine(Directory.GetCurrentDirectory(), $"dotnet-counters-{_processId}.netperf"); // TODO: This can be removed once events can be streamed in real time.
 
             String providerString;
+
+
 
             if (string.IsNullOrEmpty(_counterList))
             {
@@ -116,17 +118,73 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 providerString = sb.ToString();
             }
 
-            var configuration = new SessionConfiguration(
-                1000,
-                0,
-                outputPath,
-                ToProviders(providerString));
 
-            sessionId = EventPipeClient.EnableTracingToFile(_processId, configuration);
+            try
+            {
+
+                var configuration = new SessionConfiguration(
+                    1000,
+                    0,
+                    outputPath,
+                    ToProviders(providerString));
+                var binaryReader = EventPipeClient.StreamTracingToFile(_processId, configuration, out var sessionId);
+                _console.Out.WriteLine($"SessionId=0x{sessionId:X16}");
+                var tBytesRead = 0;
+
+                if (sessionId != 0)
+                {
+                    while(true)
+                    {
+                        var buffer = new byte[1024];
+                        int nBytesRead = binaryReader.Read(buffer, 0, buffer.Length);
+
+                        // if (buffer[0] == (BYTE)4)
+                        // {
+                        //     _console.Out.WriteLine($"BEGIN OBJ TAG");
+                        // }
+
+
+                        //var str = System.Text.Encoding.Default.GetString(buffer); 
+                        if (nBytesRead <= 0)
+                        {
+                            _console.Out.WriteLine("Done"); 
+                            break;
+                        }
+
+                        _console.Out.WriteLine($"Read {nBytesRead} bytes live");
+                        tBytesRead += nBytesRead;
+                        //_console.Out.WriteLine($"{str}");
+                    }
+                    
+                    // //var filePath = $"dotnetcore-eventpipe-{_processId}-0x{sessionId:X16}.netperf";
+                    // using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
+                    // {
+                    //     while (true)
+                    //     {
+                    //         var buffer = new byte[1024];
+                    //         int nBytesRead = binaryReader.Read(buffer, 0, buffer.Length);
+                    //         if (nBytesRead <= 0)
+                    //             break;
+                    //         fs.Write(buffer, 0, nBytesRead);
+                    //     }
+                    // }
+                }
+                _console.Out.WriteLine($"Read {tBytesRead} bytes in total.");
+
+                // await Task.FromResult(0);
+                // return sessionId != 0 ? 0 : 1;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[ERROR]: {ex.ToString()}");
+                return 1;
+            }
+            
+            //sessionId = EventPipeClient.EnableTracingToFile(_processId, configuration);
 
             // Write the config file contents
-            _console.Out.WriteLine("Tracing has started. Press Ctrl-C to stop.");
-            await Task.Delay(int.MaxValue, _ct);
+            // _console.Out.WriteLine("Tracing has started. Press Ctrl-C to stop.");
+            // await Task.Delay(int.MaxValue, _ct);
             return 0;
         }
     }
