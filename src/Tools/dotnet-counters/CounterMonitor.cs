@@ -138,20 +138,9 @@ namespace Microsoft.Diagnostics.Tools.Counters
                         var buffer = new byte[1024];
                         int nBytesRead = binaryReader.Read(buffer, 0, buffer.Length);
 
-                        // if (buffer[0] == (BYTE)4)
-                        // {
-                        //     _console.Out.WriteLine($"BEGIN OBJ TAG");
-                        // }
+                        EventBlockParser parser = new EventBlockParser();
+                        parser.ParseBlock(buffer);
 
-
-                        //var str = System.Text.Encoding.Default.GetString(buffer); 
-                        if (nBytesRead <= 0)
-                        {
-                            _console.Out.WriteLine("Done"); 
-                            break;
-                        }
-
-                        _console.Out.WriteLine($"Read {nBytesRead} bytes live");
                         tBytesRead += nBytesRead;
                         //_console.Out.WriteLine($"{str}");
                     }
