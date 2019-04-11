@@ -69,8 +69,6 @@ namespace Microsoft.Diagnostics.Tools.Counters
 
             String providerString;
 
-
-
             if (string.IsNullOrEmpty(_counterList))
             {
                 CounterProvider defaultProvider = null;
@@ -108,47 +106,29 @@ namespace Microsoft.Diagnostics.Tools.Counters
 
             try
             {
-
                 var configuration = new SessionConfiguration(
                     1000,
-                    0,
                     outputPath,
-                    ToProviders(providerString));
+                    Provider.ToProviders(providerString));
                 var binaryReader = EventPipeClient.StreamTracingToFile(_processId, configuration, out var sessionId);
                 _console.Out.WriteLine($"SessionId=0x{sessionId:X16}");
                 var tBytesRead = 0;
-
+                EventBlockParser parser = new EventBlockParser();
                 if (sessionId != 0)
                 {
                     while(true)
                     {
                         var buffer = new byte[1024];
                         int nBytesRead = binaryReader.Read(buffer, 0, buffer.Length);
-
-                        EventBlockParser parser = new EventBlockParser();
-                        parser.ParseBlock(buffer);
+                        _console.Out.WriteLine($"Read {nBytesRead}. Parsing..");
+                        parser.ParseBlock(buffer, nBytesRead);
 
                         tBytesRead += nBytesRead;
-                        //_console.Out.WriteLine($"{str}");
                     }
                     
-                    // //var filePath = $"dotnetcore-eventpipe-{_processId}-0x{sessionId:X16}.netperf";
-                    // using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
-                    // {
-                    //     while (true)
-                    //     {
-                    //         var buffer = new byte[1024];
-                    //         int nBytesRead = binaryReader.Read(buffer, 0, buffer.Length);
-                    //         if (nBytesRead <= 0)
-                    //             break;
-                    //         fs.Write(buffer, 0, nBytesRead);
-                    //     }
-                    // }
                 }
                 _console.Out.WriteLine($"Read {tBytesRead} bytes in total.");
 
-                // await Task.FromResult(0);
-                // return sessionId != 0 ? 0 : 1;
             }
             catch (Exception ex)
             {
@@ -156,11 +136,6 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 return 1;
             }
             
-            //sessionId = EventPipeClient.EnableTracingToFile(_processId, configuration);
-
-            // Write the config file contents
-            // _console.Out.WriteLine("Tracing has started. Press Ctrl-C to stop.");
-            // await Task.Delay(int.MaxValue, _ct);
             return 0;
         }
     }
