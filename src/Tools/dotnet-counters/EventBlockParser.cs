@@ -47,6 +47,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
 		public int fullNameLength;
 		public string fullName;
 		public int eventBlockSize;
+		public int eventBlockRead;
 		public int remainingBytesToRead;
 
 		public ParserProgress()
@@ -63,6 +64,8 @@ namespace Microsoft.Diagnostics.Tools.Counters
 			sawEventBlockSize = false;
 			sawEndTag = false;
 			remainingBytesToRead = 0;
+			eventBlockRead = 0;
+			eventBlockSize = 0;
 		}
 
 		public void Reset()
@@ -79,6 +82,8 @@ namespace Microsoft.Diagnostics.Tools.Counters
 			sawEventBlockSize = false;
 			sawEndTag = false;
 			remainingBytesToRead = 0;
+			eventBlockRead = 0;
+			eventBlockSize = 0;
 		}
 	}
 
@@ -243,7 +248,7 @@ EventBlock Object:
 			// BeginObject Tag (begins the EventTrace Object)
 			if (buffer.Slice(curIdx, 1)[0] == (byte)FastSerializerTags.BeginObject)
 			{
-				Console.WriteLine("EventTrace Object: Begin tag");
+				Console.WriteLine("\tEventTrace Object: Begin tag");
 				curIdx++;
 			}
 			else
@@ -254,7 +259,7 @@ EventBlock Object:
 			// BeginObject Tag (begins the Type Object for EventTrace)
 			if (buffer.Slice(curIdx, 1)[0] == (byte)FastSerializerTags.BeginObject)
 			{
-				Console.WriteLine("EventTrace Object Type Object: Begin Tag");
+				Console.WriteLine("\tEventTrace Object Type Object: Begin Tag");
 				curIdx++;
 			}
 			else
@@ -265,7 +270,7 @@ EventBlock Object:
 			// NullReference Tag (represents the type of type, which is by convention null)
 			if (buffer.Slice(curIdx, 1)[0] == (byte)FastSerializerTags.NullReference)
 			{
-				Console.WriteLine("EventTrace Object Type Object: NullReference Tag");
+				Console.WriteLine("\tEventTrace Object Type Object: NullReference Tag");
 				curIdx++;
 			}
 			else
@@ -276,27 +281,27 @@ EventBlock Object:
 			// 4 byte integer Version field for type
 			int version = BitConverter.ToInt32(buffer.Slice(curIdx, 4));
 			curIdx+=4;
-			Console.WriteLine($"Version string: {version}");
+			Console.WriteLine($"\tVersion string: {version}");
 
 			// 4 byte integer Version field for MinimumReaderVersion
 			int minReaderVersion = BitConverter.ToInt32(buffer.Slice(curIdx, 4));
 			curIdx+=4;
-			Console.WriteLine($"Min Reader Version string: {minReaderVersion}");
+			Console.WriteLine($"\tMin Reader Version string: {minReaderVersion}");
 
 			// SERIALIZED STRING for FullName Field for type (4 byte length + UTF8 bytes)
 			int fullNameLength = BitConverter.ToInt32(buffer.Slice(curIdx, 4));
 			curIdx += 4; 
-			Console.WriteLine($"Full name length: {fullNameLength}");
+			Console.WriteLine($"\tFull name length: {fullNameLength}");
 
 			// FullName 
 			string fullName = System.Text.Encoding.UTF8.GetString(buffer.Slice(curIdx, fullNameLength).ToArray());
 			curIdx += fullNameLength;
-			Console.WriteLine($"FullName: {fullName}");
+			Console.WriteLine($"\tFullName: {fullName}");
 
 			// EndObject Tag (represents the type of type, which is by convention null)
 			if (buffer.Slice(curIdx, 1)[0] == (byte)FastSerializerTags.EndObject)
 			{
-				Console.WriteLine("EventTrace Object Type Object: EndObject Tag");
+				Console.WriteLine("\tEventTrace Object Type Object: EndObject Tag");
 				curIdx++;
 			}
 			else
@@ -315,7 +320,7 @@ EventBlock Object:
 			// EndObject Tag (represents the type of type, which is by convention null)
 			if (buffer.Slice(curIdx, 1)[0] == (byte)FastSerializerTags.EndObject)
 			{
-				Console.WriteLine("EventTrace Object Type Object: EndObject Tag");
+				Console.WriteLine("\tEventTrace Object Type Object: EndObject Tag");
 				curIdx++;
 			}
 			else
@@ -354,7 +359,7 @@ EventBlock Object:
 				{
 					if (buffer.Slice(curIdx, 1)[0] == (byte)FastSerializerTags.BeginObject)
 					{
-						Console.WriteLine("Event: BeginObject Tag");
+						Console.WriteLine("\tEvent: BeginObject Tag");
 						curIdx += 1;
 						progress.sawBeginTag = true;
 						if (curIdx >= bytesRead) return;
@@ -369,7 +374,7 @@ EventBlock Object:
 				{
 					if (buffer.Slice(curIdx, 1)[0] == (byte)FastSerializerTags.BeginObject)
 					{
-						Console.WriteLine("Event (Type): Begin Object Tag");
+						Console.WriteLine("\tEvent (Type): Begin Object Tag");
 						curIdx += 1;
 						progress.sawTypeBeginTag = true;
 						if (curIdx >= bytesRead) return;
@@ -384,7 +389,7 @@ EventBlock Object:
 				{
 					if (buffer.Slice(curIdx, 1)[0] == (byte)FastSerializerTags.NullReference)
 					{
-						Console.WriteLine("Event (Type): NULL REF Tag");
+						Console.WriteLine("\tEvent (Type): NULL REF Tag");
 						curIdx += 1;
 						progress.sawNullRefTag = true;
 						if (curIdx >= bytesRead) return;
@@ -401,7 +406,7 @@ EventBlock Object:
 					curIdx += 4;
 					progress.sawVersionStr = true;
 					progress.version = version;
-					Console.WriteLine($"Event version str: {version}");
+					Console.WriteLine($"\tEvent version str: {version}");
 					if (curIdx >= bytesRead) return;
 				}
 
@@ -411,7 +416,7 @@ EventBlock Object:
 					curIdx += 4;
 					progress.sawMinReqVersionStr = true;
 					progress.minReqVersion = minReqVersionStr;
-					Console.WriteLine($"Event min req reader version: {minReqVersionStr}");
+					Console.WriteLine($"\tEvent min req reader version: {minReqVersionStr}");
 					if (curIdx >= bytesRead) return;
 				}
 				
@@ -421,7 +426,7 @@ EventBlock Object:
 					curIdx += 4;
 					progress.sawFullNameLen = true; 
 					progress.fullNameLength = fullNameLength;
-					Console.WriteLine($"Event fullname length: {fullNameLength}");
+					Console.WriteLine($"\tEvent fullname length: {fullNameLength}");
 					if (curIdx >= bytesRead) return;
 				}
 
@@ -431,7 +436,7 @@ EventBlock Object:
 					curIdx += progress.fullNameLength;
 					progress.sawFullNameStr = true;
 					progress.fullName = fullName;
-					Console.WriteLine($"FullName: {fullName}");
+					Console.WriteLine($"\tFullName: {fullName}");
 					if (curIdx >= bytesRead) return;
 				}
 
@@ -439,7 +444,7 @@ EventBlock Object:
 				{
 					if (buffer.Slice(curIdx, 1)[0] == (byte)FastSerializerTags.EndObject)
 					{
-						Console.WriteLine("Event (Type): End Object Tag");
+						Console.WriteLine("\tEvent (Type): End Object Tag");
 						curIdx += 1;
 						progress.sawTypeEndTag = true;
 						if (curIdx >= bytesRead) return;
@@ -447,6 +452,7 @@ EventBlock Object:
 					else
 					{
 						Console.WriteLine("Fail....");
+						Environment.FailFast("Didnt see typeend tag");
 					}
 				}
 
@@ -458,17 +464,20 @@ EventBlock Object:
 					curIdx += 4;
 					progress.sawEventBlockSize = true;
 					progress.eventBlockSize = blobSize;
-					Console.WriteLine($"Blob size: {blobSize}");
+					Console.WriteLine($"\tEvent Blob size: {blobSize}");
 					if (curIdx >= bytesRead) return;
 				}
 
 				if (!progress.sawEventBlock)
 				{
-					curIdx = eventParser.ParseEvent(buffer, progress.eventBlockSize, bytesRead, curIdx);
-					
-					if (curIdx >= bytesRead) return; // If this is true, it means we're not done yet.
+					int curSize = eventParser.ParseEvent(buffer, progress.eventBlockSize, bytesRead, curIdx);
+					progress.eventBlockRead += curSize;
+					Console.WriteLine($"\tRead {progress.eventBlockRead} so far...");
+					Console.WriteLine($"\tNeed to read {progress.eventBlockSize}.");
+					if (progress.eventBlockRead < progress.eventBlockSize) return; // If this is true, it means we're not done yet.
 
 					progress.sawEventBlock = true;
+					curIdx += progress.eventBlockSize;
 					/*
 					// TODO: Parse the blob
 					if (curIdx + progress.eventBlockSize > bytesRead)
@@ -482,14 +491,14 @@ EventBlock Object:
 					*/
 				}
 
-				if (progress.remainingBytesToRead > 0)
-				{
-					Console.WriteLine("Trying to read remaining bytes.");
-					Console.WriteLine($"curIdx: {curIdx}");
-					Console.WriteLine($"bytesRead: {bytesRead}");
-					Console.WriteLine($"remBytesToRead: {progress.remainingBytesToRead}");
-					curIdx += progress.remainingBytesToRead;
-				}
+				// if (progress.remainingBytesToRead > 0)
+				// {
+				// 	Console.WriteLine("\tTrying to read remaining bytes.");
+				// 	Console.WriteLine($"\tcurIdx: {curIdx}");
+				// 	Console.WriteLine($"\tbytesRead: {bytesRead}");
+				// 	Console.WriteLine($"remBytesToRead: {progress.remainingBytesToRead}");
+				// 	curIdx += progress.remainingBytesToRead;
+				// }
 
 				if (!progress.sawEndTag)
 				{
