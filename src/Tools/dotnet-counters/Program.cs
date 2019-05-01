@@ -40,10 +40,13 @@ namespace Microsoft.Diagnostics.Tools.Counters
         private static Argument CounterList() =>
             new Argument<List<string>> {
                 Name = "counter_list",
-                Description = @"A space separated list of counters. Counters can be specified provider_name[:counter_name].
+                Description = @"A space separated list of counters. Counters can be specified provider_name[counter_names].
                 If the provider_name is used without a qualifying counter_name then all counters will be shown. To discover 
-                provider and counter names, use the list command.
-                .",
+                provider and counter names, use the list command. You can specify multiple counter_names in a provider by
+                using commas. 
+                Examples: 
+                    * System.Runtime[cpu-usage,gc-heap-size]
+                    * System.Runtime[cpu-usage] MyEventCounterProvider[my-counter]",
                 Arity = ArgumentArity.ZeroOrMore
             };
 
