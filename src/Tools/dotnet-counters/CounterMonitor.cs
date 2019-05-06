@@ -166,7 +166,13 @@ namespace Microsoft.Diagnostics.Tools.Counters
 
             Task commandTask = new Task(() =>
             {
-                while(true)
+                var shouldExit = new ManualResetEvent(false);
+                Console.CancelKeyPress += (sender, args) => {
+                    args.Cancel = true;
+                    shouldExit.Set();
+                };
+
+                while(!shouldExit.WaitOne(0))
                 {
                     while (!Console.KeyAvailable) { }
                     ConsoleKey cmd = Console.ReadKey(true).Key;
