@@ -36,6 +36,6 @@ namespace Microsoft.Diagnostics.Tools.RuntimeClient
             $"{Name}:0x{Keywords:X16}:{(uint)EventLevel}{(FilterData == null ? "" : $":{FilterData}")}";
 
         public string ToDisplayString() =>
-            String.Format("{0, -40}", Name) + String.Format("0x{0, -18}", $"{Keywords:X16}") + String.Format("{0, -8}", EventLevel.ToString() + $"({(int)EventLevel})");
+            String.Format("{0, -30}", Name) + String.Format("0x{0, -15}", $"{Keywords:X16}") + String.Format("{0, -5}", EventLevel.ToString() + $"({(int)EventLevel})") + String.Format("{0, -20} ", FilterData);
     }
 }
