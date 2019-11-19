@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
@@ -30,6 +31,15 @@ namespace Microsoft.Diagnostics.NETCore.Client
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
+                try 
+                {
+                    var process = Process.GetProcessById(processId);
+                }
+                catch (System.ArgumentException)
+                {
+                    throw new ServerNotAvailableException($"Process {processId} not running compatible .NET Core runtime.");
+                }
+
                 string pipeName = $"dotnet-diagnostic-{processId}";
                 var namedPipe = new NamedPipeClientStream(
                     ".", pipeName, PipeDirection.InOut, PipeOptions.None, TokenImpersonationLevel.Impersonation);
@@ -43,7 +53,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
                     .SingleOrDefault(input => Regex.IsMatch(input, $"^dotnet-diagnostic-{processId}-(\\d+)-socket$"));
                 if (ipcPort == null)
                 {
-                    throw new ServerNotAvailableException($"Process {processId} not running compatible .NET Core runtime");
+                    throw new ServerNotAvailableException($"Process {processId} not running compatible .NET Core runtime.");
                 }
                 string path = Path.Combine(Path.GetTempPath(), ipcPort);
                 var remoteEP = new UnixDomainSocketEndPoint(path);

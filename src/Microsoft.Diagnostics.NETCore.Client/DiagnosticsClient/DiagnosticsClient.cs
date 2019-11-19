@@ -125,7 +125,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
              return Directory.GetFiles(IpcRootPath)
                 .Select(namedPipe => (new FileInfo(namedPipe)).Name)
                 .Where(input => Regex.IsMatch(input, DiagnosticsPortPattern))
-                .Select(input => int.Parse(Regex.Match(input, DiagnosticsPortPattern).Groups[1].Value, NumberStyles.Integer));
+                .Select(input => int.Parse(Regex.Match(input, DiagnosticsPortPattern).Groups[1].Value, NumberStyles.Integer))
+                .Distinct();
         }
 
         private static byte[] SerializeCoreDump(string dumpName, DumpType dumpType, bool diagnostics)
