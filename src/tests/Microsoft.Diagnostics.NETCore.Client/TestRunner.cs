@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Xunit;
+using Xunit.Abstractions;
 
 using Microsoft.Diagnostics.TestHelpers;
 
@@ -18,12 +19,14 @@ namespace Microsoft.Diagnostics.NETCore.Client
     {
         private Process testProcess;
         private ProcessStartInfo startInfo;
+        private ITestOutputHelper outputHelper;
 
-        public TestRunner(string testExePath)
+        public TestRunner(string testExePath, ITestOutputHelper _outputHelper=null)
         {
             startInfo = new ProcessStartInfo(testExePath);
             startInfo.UseShellExecute = false;
             startInfo.RedirectStandardOutput = true;
+            outputHelper = _outputHelper;
         }
 
         public void AddEnvVar(string key, string value)
@@ -33,6 +36,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         public void Start(int timeoutInMS=0)
         {
+            if (outputHelper != null)
+                outputHelper.WriteLine("hi");
             testProcess = Process.Start(startInfo);
             Thread.Sleep(timeoutInMS);
         }

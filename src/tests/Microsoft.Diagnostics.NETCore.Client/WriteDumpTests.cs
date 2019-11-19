@@ -18,15 +18,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
 {
     public class WriteDumpTests
     {
-        private string GetTraceePath()
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                return "../../../Tracee/Debug/netcoreapp3.0/Tracee.exe";
-            }
-            return @"../../../Tracee/Debug/netcoreapp3.0/Tracee";
-        }
-
         /// <summary>
         /// A simple test that writes a single dump file
         /// </summary>
@@ -34,7 +25,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         public void BasicWriteDumpTest()
         {
             var dumpPath = "./myDump.dmp";
-            TestRunner runner = new TestRunner(GetTraceePath());
+            TestRunner runner = new TestRunner(CommonHelper.GetTraceePath());
             runner.Start(3000);
             DiagnosticsClient client = new DiagnosticsClient(runner.Pid);
 
@@ -61,7 +52,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             var heapDumpPath = "./myDump-heap.dmp";
             var triageDumpPath = "./myDump-triage.dmp";
             var fullDumpPath = "./myDump-full.dmp";
-            TestRunner runner = new TestRunner(GetTraceePath());
+            TestRunner runner = new TestRunner(CommonHelper.GetTraceePath());
             runner.Start(3000);
             DiagnosticsClient client = new DiagnosticsClient(runner.Pid);
 

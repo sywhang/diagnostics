@@ -8,7 +8,9 @@ using System.Diagnostics;
 using System.Diagnostics.Tracing;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using Xunit;
+using Xunit.Abstractions;
 
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.TestHelpers;
@@ -18,13 +20,11 @@ namespace Microsoft.Diagnostics.NETCore.Client
 {
     public class EventPipeSessionTests
     {
-        private string GetTraceePath()
+        private readonly ITestOutputHelper output;
+
+        public EventPipeSessionTests(ITestOutputHelper outputHelper)
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                return "../../../Tracee/Debug/netcoreapp3.0/Tracee.exe";
-            }
-            return @"../../../Tracee/Debug/netcoreapp3.0/Tracee";
+            output = outputHelper;
         }
 
         /// <summary>
@@ -33,8 +33,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
         [Fact]
         public void BasicEventPipeSessionTest()
         {
-            TestRunner runner = new TestRunner(GetTraceePath());
-            runner.Start(3000);
+            TestRunner runner = new TestRunner(CommonHelper.GetTraceePath(), output);
+            runner.Start(5000);
             DiagnosticsClient client = new DiagnosticsClient(runner.Pid);
             using (var session = client.StartEventPipeSession(new List<EventPipeProvider>()
             {
@@ -52,8 +52,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
         [Fact]
         public void EventPipeSessionStreamTest()
         {
-            TestRunner runner = new TestRunner(GetTraceePath());
-            runner.Start(3000);
+            TestRunner runner = new TestRunner(CommonHelper.GetTraceePath(), output);
+            runner.Start(5000);
             DiagnosticsClient client = new DiagnosticsClient(runner.Pid);
             using (var session = client.StartEventPipeSession(new List<EventPipeProvider>()
             {

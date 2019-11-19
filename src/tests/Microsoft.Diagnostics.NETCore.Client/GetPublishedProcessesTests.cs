@@ -21,19 +21,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
     /// </summary>
     public class GetPublishedProcessesTest
     {
-        private string GetTraceePath()
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                return "../../../Tracee/Debug/netcoreapp3.0/Tracee.exe";
-            }
-            return @"../../../Tracee/Debug/netcoreapp3.0/Tracee";
-        }
-
         [Fact]
         public void PublishedProcessTest1()
         {
-            TestRunner runner = new TestRunner(GetTraceePath());
+            TestRunner runner = new TestRunner(CommonHelper.GetTraceePath());
             runner.Start(3000);
             List<int> publishedProcesses = new List<int>(DiagnosticsClient.GetPublishedProcesses());
             Assert.Contains(publishedProcesses, p => p == runner.Pid);
@@ -48,7 +39,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
             for (var i = 0; i < 3; i++)
             {
-                runner[i] = new TestRunner(GetTraceePath());
+                runner[i] = new TestRunner(CommonHelper.GetTraceePath());
                 runner[i].Start(500);
                 pids[i] = runner[i].Pid;
             }
