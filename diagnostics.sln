@@ -48,6 +48,9 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SOS.Symbol.Package", "src\SOS\SOS.Package\SOS.Symbol.Package.csproj", "{410394E0-7F4F-42D5-B5FA-30956F44ACBC}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{03479E19-3F18-49A6-910A-F5041E27E7C0}"
+	ProjectSection(SolutionItems) = preProject
+		src\tests\Tracee\Tracee.csproj = src\tests\Tracee\Tracee.csproj
+	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DotnetTrace.UnitTests", "src\tests\dotnet-trace\DotnetTrace.UnitTests.csproj", "{AEDCCF5B-5AD0-4D64-BF73-5CF468E07D22}"
 EndProject
