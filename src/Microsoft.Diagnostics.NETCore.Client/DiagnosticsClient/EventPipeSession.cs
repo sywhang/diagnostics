@@ -25,20 +25,39 @@ namespace Microsoft.Diagnostics.NETCore.Client
             _requestRundown = requestRundown;
             _circularBufferMB = circularBufferMB;
             
-            var config = new EventPipeSessionConfiguration(circularBufferMB, EventPipeSerializationFormat.NetTrace, providers, requestRundown);
-            var message = new IpcMessage(DiagnosticsServerCommandSet.EventPipe, (byte)EventPipeCommandId.CollectTracing2, config.Serialize());
-            EventStream = IpcClient.SendMessage(processId, message, out var response);
-            
-            switch ((DiagnosticsServerCommandId)response.Header.CommandId)
+            var v2config = new EventPipeSessionConfiguration(circularBufferMB, EventPipeSerializationFormat.NetTrace, providers, requestRundown);
+            var v2message = new IpcMessage(DiagnosticsServerCommandSet.EventPipe, (byte)EventPipeCommandId.CollectTracing2, v2config.SerializeV2());
+            bool v2Failed = false;
+            EventStream = IpcClient.SendMessage(processId, v2message, out var responsev2);
+            switch ((DiagnosticsServerCommandId)responsev2.Header.CommandId)
             {
                 case DiagnosticsServerCommandId.OK:
-                    _sessionId = BitConverter.ToInt64(response.Payload, 0);
+                    _sessionId = BitConverter.ToInt64(responsev2.Payload, 0);
                     break;
                 case DiagnosticsServerCommandId.Error:
-                    var hr = BitConverter.ToInt32(response.Payload, 0);
-                    throw new ServerErrorException($"EventPipe session start failed (HRESULT: 0x{hr:X8})");
+                    // Try again with v1
+                    v2Failed = true;
+                    break;
                 default:
                     throw new ServerErrorException($"EventPipe session start failed - Server responded with unknown command");
+            }
+
+            if (v2Failed)
+            {
+                var v1config = new EventPipeSessionConfiguration(circularBufferMB, EventPipeSerializationFormat.NetTrace, providers);
+                var v1message = new IpcMessage(DiagnosticsServerCommandSet.EventPipe, (byte)EventPipeCommandId.CollectTracing, v1config.SerializeV1());
+                EventStream = IpcClient.SendMessage(processId, v1message, out var responsev1);
+                switch ((DiagnosticsServerCommandId)responsev1.Header.CommandId)
+                {
+                    case DiagnosticsServerCommandId.OK:
+                        _sessionId = BitConverter.ToInt64(responsev1.Payload, 0);
+                        return;
+                    case DiagnosticsServerCommandId.Error:
+                        var hr = BitConverter.ToInt32(responsev1.Payload, 0);
+                        throw new ServerErrorException($"EventPipe session start failed (HRESULT: 0x{hr:X8})");
+                    default:
+                        throw new ServerErrorException($"EventPipe session start failed - Server responded with unknown command");
+                }
             }
         }
 
