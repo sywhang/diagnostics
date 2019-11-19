@@ -38,7 +38,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             runner.Start(3000);
             DiagnosticsClient client = new DiagnosticsClient(runner.Pid);
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 Assert.Throws<PlatformNotSupportedException>(() => client.WriteDump(DumpType.Normal, dumpPath));
             }
@@ -65,7 +65,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             runner.Start(3000);
             DiagnosticsClient client = new DiagnosticsClient(runner.Pid);
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 Assert.Throws<PlatformNotSupportedException>(() => client.WriteDump(DumpType.Normal, normalDumpPath));
                 Assert.Throws<PlatformNotSupportedException>(() => client.WriteDump(DumpType.WithHeap, heapDumpPath));
@@ -110,7 +110,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             }
 
             var client = new DiagnosticsClient(arbitraryPid);
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 Assert.Throws<PlatformNotSupportedException>(() => client.WriteDump(DumpType.Normal, dumpPath));
             }
