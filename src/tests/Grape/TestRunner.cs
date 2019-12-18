@@ -45,8 +45,8 @@ namespace Microsoft.Diagnostics.Grape
                 Debug.WriteLine($"Process " + startInfo.FileName + " came back as exited");
             }
 
-                Debug.WriteLine($"[{DateTime.Now.ToString()}] Successfuly started process {testProcess.Id}");
-                Debug.WriteLine($"Have total {testProcess.Modules.Count} modules loaded");
+            Debug.WriteLine($"[{DateTime.Now.ToString()}] Successfuly started process {testProcess.Id}");
+            Debug.WriteLine($"Have total {testProcess.Modules.Count} modules loaded");
 
             Debug.WriteLine($"[{DateTime.Now.ToString()}] Sleeping for {timeoutInMS} ms.");
             Thread.Sleep(timeoutInMS);

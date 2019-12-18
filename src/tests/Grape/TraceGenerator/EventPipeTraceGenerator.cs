@@ -18,7 +18,6 @@ namespace Microsoft.Diagnostics.Grape
 		string _pathToExe;
 		string _traceName;
 		List<EventPipeProvider> _providers;
-		// Let's give it the same amount of time to sleep after it starts artificially...
 
 		public EventPipeTraceGenerator(string pathToExe, string traceName, List<EventPipeProvider> providers)
 		{

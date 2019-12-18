@@ -39,6 +39,7 @@ namespace Microsoft.Diagnostics.Grape
             _runner = new TestRunner(pathToExe);
             _runner.AddEnvVar("COMPlus_PerfMapEnabled", "1");
             _runner.AddEnvVar("COMPlus_EnableEventLog", "1");
+            _runner.AddEnvVar("COMPlus_LTTngConfig", GetLttngConfigString());
             _runner.Start(2000); // Let's give it the same amount of time to sleep after it starts artificially...
             return _runner.Pid;
         }
@@ -56,7 +57,9 @@ namespace Microsoft.Diagnostics.Grape
 
         public void TraceProcessForDuration(int duration, string traceName)
         {
-            var _tracerProcess = new TestRunner("bash", "perfcollect.sh");
+            var _perfcollectProcess = new TestRunner("bash", "perfcollect.sh");
+            _perfcollectProcess.Start();
+            _perfcollectProcess.Stop();
         }
     }
 }
