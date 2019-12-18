@@ -3,17 +3,25 @@
   <PropertyGroup>
     <RepositoryUrl>https://github.com/dotnet/diagnostics</RepositoryUrl>
     <PreReleaseVersionLabel>preview</PreReleaseVersionLabel>
-    <VersionPrefix>3.0.0</VersionPrefix>
+    <VersionPrefix>5.0.0</VersionPrefix>
     <DotNetUseShippingVersions>true</DotNetUseShippingVersions>
     <AutoGenerateAssemblyVersion>true</AutoGenerateAssemblyVersion>
-    <MicrosoftNETCoreAppVersion>5.0.0-alpha.1.19564.1</MicrosoftNETCoreAppVersion>
-    <MicrosoftAspNetCoreAppRefVersion>5.0.0-alpha1.19610.3</MicrosoftAspNetCoreAppRefVersion>
   </PropertyGroup>
   <PropertyGroup>
-    <!-- Opt-out repo features -->
+    <!-- Runtime versions to test -->
+    <MicrosoftNETCoreApp21Version>2.1.12</MicrosoftNETCoreApp21Version>
+    <MicrosoftAspNetCoreApp21Version>$(MicrosoftNETCoreApp21Version)</MicrosoftAspNetCoreApp21Version>
+    <MicrosoftNETCoreApp30Version>3.0.1</MicrosoftNETCoreApp30Version>
+    <MicrosoftAspNetCoreApp30Version>$(MicrosoftNETCoreApp30Version)</MicrosoftAspNetCoreApp30Version>
+    <MicrosoftNETCoreApp31Version>3.1.0</MicrosoftNETCoreApp31Version>
+    <MicrosoftAspNetCoreApp31Version>$(MicrosoftNETCoreApp31Version)</MicrosoftAspNetCoreApp31Version>
+    <MicrosoftNETCoreAppVersion>5.0.0-alpha.1.19564.1</MicrosoftNETCoreAppVersion>
+    <MicrosoftAspNetCoreAppRefVersion>5.0.0-alpha.1.19614.22</MicrosoftAspNetCoreAppRefVersion>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Opt-in/out repo features -->
     <UsingToolXliff>false</UsingToolXliff>
     <UsingToolNetFrameworkReferenceAssemblies>true</UsingToolNetFrameworkReferenceAssemblies>
-    <UsingToolSymbolUploader>true</UsingToolSymbolUploader>
     <!-- Build tools -->
     <MicrosoftNetCompilersVersion>3.0.0</MicrosoftNetCompilersVersion>
     <!-- CoreFX -->
@@ -22,7 +30,7 @@
     <MicrosoftWin32PrimitivesVersion>4.3.0</MicrosoftWin32PrimitivesVersion>
     <!-- Other libs -->
     <MicrosoftSymbolStoreVersion>1.0.55801</MicrosoftSymbolStoreVersion>
-    <MicrosoftDiagnosticsRuntimeVersion>1.1.46104</MicrosoftDiagnosticsRuntimeVersion>
+    <MicrosoftDiagnosticsRuntimeVersion>1.1.57004</MicrosoftDiagnosticsRuntimeVersion>
     <MicrosoftDiaSymReaderNativePackageVersion>1.7.0</MicrosoftDiaSymReaderNativePackageVersion>
     <MicrosoftDiagnosticsTracingTraceEventVersion>2.0.44</MicrosoftDiagnosticsTracingTraceEventVersion>
     <SystemCommandLineExperimentalVersion>0.3.0-alpha.19602.1</SystemCommandLineExperimentalVersion>
@@ -30,7 +38,7 @@
     <SystemMemoryVersion>4.5.3</SystemMemoryVersion>
     <XUnitVersion>2.4.1</XUnitVersion>
     <XUnitAbstractionsVersion>2.0.3</XUnitAbstractionsVersion>
-    <MicrosoftDotNetRemoteExecutorVersion>5.0.0-beta.19562.5</MicrosoftDotNetRemoteExecutorVersion>
+    <MicrosoftDotNetRemoteExecutorVersion>5.0.0-beta.19615.1</MicrosoftDotNetRemoteExecutorVersion>
     <cdbsosversion>10.0.18362</cdbsosversion>
   </PropertyGroup>
   <PropertyGroup>
