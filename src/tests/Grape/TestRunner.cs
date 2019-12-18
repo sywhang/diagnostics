@@ -17,9 +17,9 @@ namespace Microsoft.Diagnostics.Grape
         private Process testProcess;
         private ProcessStartInfo startInfo;
 
-        public TestRunner(string testExePath)
+        public TestRunner(string testExePath, string argument=null)
         {
-            startInfo = new ProcessStartInfo(testExePath, null);
+            startInfo = new ProcessStartInfo(testExePath, argument);
             startInfo.UseShellExecute = false;
             startInfo.RedirectStandardOutput = true;
         }

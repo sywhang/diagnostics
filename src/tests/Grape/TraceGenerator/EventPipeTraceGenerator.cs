@@ -12,22 +12,19 @@ using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 
 namespace Microsoft.Diagnostics.Grape
 {
-	public class TraceGenerator
+	public class EventPipeTraceGenerator
 	{
 		TestRunner _runner;
 		string _pathToExe;
 		string _traceName;
 		List<EventPipeProvider> _providers;
+		// Let's give it the same amount of time to sleep after it starts artificially...
 
-		public TraceGenerator(string pathToExe, string traceName)
+		public EventPipeTraceGenerator(string pathToExe, string traceName, List<EventPipeProvider> providers)
 		{
 			_pathToExe = pathToExe;
 			_traceName = traceName;
-			_providers = new List<EventPipeProvider>()
-		    {
-		        new EventPipeProvider("Microsoft-Windows-DotNETRuntime",
-		            EventLevel.Informational, (long)(-1))
-		    };
+			_providers = providers;
 		}
 
 	    public void CollectEventPipeTrace(int duration)
@@ -39,20 +36,14 @@ namespace Microsoft.Diagnostics.Grape
 		private int LaunchProcess(string pathToExe)
 	    {
 	        _runner = new TestRunner(pathToExe);
-	        _runner.Start(2000); // Let's give it the same amount of time to sleep after it starts artificially...
+	        _runner.Start(2000); 
 	    	return _runner.Pid;
 	    }
 
 	    public void TraceProcessForDuration(int processId, int duration, string traceName)
 		{
-		    var cpuProviders = new List<EventPipeProvider>()
-		    {
-		        new EventPipeProvider("Microsoft-Windows-DotNETRuntime", EventLevel.Informational, (long)ClrTraceEventParser.Keywords.Default),
-		        new EventPipeProvider("Microsoft-DotNETCore-SampleProfiler", EventLevel.Informational, (long)ClrTraceEventParser.Keywords.None),
-   		        new EventPipeProvider("My-Test-EventSource", EventLevel.Verbose, (long)(-1))
-		    };
 		    var client = new DiagnosticsClient(processId);
-		    using (var traceSession = client.StartEventPipeSession(cpuProviders))
+		    using (var traceSession = client.StartEventPipeSession(_providers))
 		    {
 		        Task copyTask = Task.Run(async () =>
 		        {
@@ -61,7 +52,6 @@ namespace Microsoft.Diagnostics.Grape
 		                await traceSession.EventStream.CopyToAsync(fs);
 		            }
 		        });
-
 		        copyTask.Wait(duration * 1000);
 		        traceSession.Stop();
 		    }
