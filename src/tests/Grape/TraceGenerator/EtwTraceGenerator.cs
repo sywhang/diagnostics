@@ -27,7 +27,7 @@ namespace Microsoft.Diagnostics.Grape
             _providers = providers;
 		}
 
-	    public void CollectEventPipeTrace(int duration)
+	    public void Collect(int duration)
 	    {
 	    	var pid = LaunchProcess(_pathToExe);
 	    	TraceProcessForDuration(duration, _traceName);

@@ -36,18 +36,29 @@ namespace Microsoft.Diagnostics.Grape
             var baseTracer = new EventPipeTraceGenerator(_baseExe, "base.nettrace", _providers);
             var diffTracer = new EventPipeTraceGenerator(_diffExe, "diff.nettrace", _providers);
 
+            // Collect base trace
             Console.WriteLine($"Collecting EventPipe trace for base exe: {_baseExe}");
-            baseTracer.CollectEventPipeTrace(duration);
+            baseTracer.Collect(duration);
             Console.WriteLine($"Done collecting trace for base exe: {_baseExe}");
 
+            // Collect diff trace
             Console.WriteLine($"Collecting EventPipe trace for diff exe: {_diffExe}");
-            diffTracer.CollectEventPipeTrace(duration);
+            diffTracer.Collect(duration);
             Console.WriteLine($"Done collecting trace for diff exe: {_diffExe}");
         }
 
         private void GenerateEtwTrace(int duration)
         {
-            var baseTracer = new EtwTraceGenerator()
+            var baseTracer = new EtwTraceGenerator(_baseExe, "base.etl", _providers);
+            var diffTracer = new EtwTraceGenerator(_diffExe, "diff.etl", _providers);
+
+            Console.WriteLine($"Collecting ETW trace for base exe: {_baseExe}");
+            baseTracer.Collect(duration);
+            Console.WriteLine($"Done collecting ETW trace for base exe: {_baseExe}");
+
+            Console.WriteLine($"Collecting ETW trace for base exe: {_baseExe}");
+            diffTracer.Collect(duration);
+            Console.WriteLine($"Done collecting ETW trace for base exe: {_baseExe}");
         }
     }
 }

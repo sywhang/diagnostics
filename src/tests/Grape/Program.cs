@@ -1,5 +1,6 @@
 ﻿using System;
-using System.Diagnostics;
+using System.Collections.Generic;
+using System.Diagnostics.Tracing;
 using Microsoft.Diagnostics.NETCore.Client;
 
 namespace Microsoft.Diagnostics.Grape
@@ -12,8 +13,13 @@ namespace Microsoft.Diagnostics.Grape
             {
                 var pathToExe = args[1];
                 var pathToDiff = args[2];
+                var providers = new List<EventPipeProvider>()
+                {
+                    new EventPipeProvider("Microsoft-Windows-DotNETRuntime", EventLevel.Informational, (long)(-1))
+                };
 
-                var diffGen = new TraceDiffGenerator(pathToExe, pathToDiff);
+                var diffGen = new TraceDiffGenerator(pathToExe, pathToDiff, providers);
+                diffGen.Start(3000);
             }
         }
 
