@@ -10,6 +10,7 @@ using System.Diagnostics.Tracing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Grape.TraceAnalyzers;
 using Microsoft.Diagnostics.NETCore.Client;
 
 namespace Microsoft.Diagnostics.Grape
@@ -32,6 +33,7 @@ namespace Microsoft.Diagnostics.Grape
                 traceConfig = JsonSerializer.Deserialize<TraceGeneratorConfiguration>(File.ReadAllText(pathToConfig));
                 var providers = new List<EventPipeProvider>();
 
+                /*
                 foreach (var configProvider in traceConfig.eventProviders)
                 {
                     providers.Add(ToEventPipeProvider(configProvider));
@@ -48,7 +50,11 @@ namespace Microsoft.Diagnostics.Grape
                 }
 
                 // TODO: Add Linux/LTTng trace generation here once I figure out how to make perfcollect more friendly...
-                Console.WriteLine("Done!");         
+                Console.WriteLine("Done collecting trace");
+                */
+
+                var parser = new TraceAnalysisReporter(traceConfig);
+                parser.Report();
             }
             catch (Exception e)
             {
