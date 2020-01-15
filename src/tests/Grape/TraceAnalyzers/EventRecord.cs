@@ -10,7 +10,7 @@ namespace Grape.TraceAnalyzers
     /// </summary>
     public class EventRecord
     {
-        public Dictionary<string, Dictionary<string, int>> EventCounts;
+        public Dictionary<string, Dictionary<string, int>> eventCounts;
 
         public EventRecord()
         {

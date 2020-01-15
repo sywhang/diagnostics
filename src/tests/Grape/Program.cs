@@ -4,8 +4,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.CommandLine.Builder;
-using System.CommandLine.Invocation;
 using System.Diagnostics.Tracing;
 using System.IO;
 using System.Runtime.InteropServices;

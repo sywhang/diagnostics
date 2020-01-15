@@ -66,7 +66,7 @@ namespace Grape.TraceAnalyzers
             Console.WriteLine(new string('-', 60 + traceCnt * 20));
             foreach (var record in _recordHolder)
             {
-                foreach (var provEventCnt in eventRecord.EventCounts)
+                foreach (var provEventCnt in record.Value.eventCounts)
                 {
                     var providerName = provEventCnt.Key;
                     foreach (var eventCnt in provEventCnt.Value)
@@ -86,7 +86,7 @@ namespace Grape.TraceAnalyzers
 
         private void AssertTracesExist()
         {
-            foreach (var traceFile in traceFiles)
+            foreach (var traceFile in _traceFiles)
             {
                 if (!File.Exists(traceFile))
                 {
