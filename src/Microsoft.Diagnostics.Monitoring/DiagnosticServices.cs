@@ -10,9 +10,9 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Diagnostics.Monitoring.Logging;
+using FastSerialization;
+using Graphs;
 using Microsoft.Diagnostics.NETCore.Client;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -20,16 +20,7 @@ namespace Microsoft.Diagnostics.Monitoring
 {
     public sealed class DiagnosticServices : IDiagnosticServices
     {
-        private readonly ILogger<DiagnosticsMonitor> _logger;
         private readonly CancellationTokenSource _tokenSource = new CancellationTokenSource();
-        private ContextConfiguration _contextConfiguration;
-
-        public DiagnosticServices(ILogger<DiagnosticsMonitor> logger,
-            IOptions<ContextConfiguration> contextConfig)
-        {
-            _logger = logger;
-            _contextConfiguration = contextConfig.Value;
-        }
 
         public IEnumerable<int> GetProcesses()
         {
@@ -47,7 +38,7 @@ namespace Microsoft.Diagnostics.Monitoring
 
         public async Task<Stream> GetDump(int pid, DumpType mode)
         {
-            string dumpFilePath = FormattableString.Invariant($@"{Path.GetTempPath()}{Path.DirectorySeparatorChar}{Guid.NewGuid()}_{pid}");
+            string dumpFilePath = Path.Combine(Path.GetTempPath(), FormattableString.Invariant($"{Guid.NewGuid()}_{pid}"));
             NETCore.Client.DumpType dumpType = MapDumpType(mode);
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -68,40 +59,41 @@ namespace Microsoft.Diagnostics.Monitoring
             return new AutoDeleteFileStream(dumpFilePath);
         }
 
-        public async Task<IStreamWithCleanup> StartCpuTrace(int pid, TimeSpan duration, CancellationToken cancellationToken)
+        public async Task<Stream> GetGcDump(int pid, CancellationToken cancellationToken)
         {
-            DiagnosticsMonitor monitor = new DiagnosticsMonitor(new CpuProfileConfiguration());
-            Stream stream = await monitor.ProcessEvents(pid, duration, cancellationToken);
+            var graph = new MemoryGraph(50_000);
+            await using var processor = new DiagnosticsEventPipeProcessor(PipeMode.GCDump,
+                gcGraph: graph);
 
-            return new StreamWithCleanup(monitor, stream);
+            await processor.Process(pid, Timeout.InfiniteTimeSpan, cancellationToken);
+
+            var dumper = new GCHeapDump(graph);
+            dumper.CreationTool = "dotnet-monitor";
+
+            var stream = new MemoryStream();
+            var serializer = new Serializer(stream, dumper, leaveOpen: true);
+            serializer.Close();
+
+            stream.Position = 0;
+            return stream;
         }
 
-        public async Task<IStreamWithCleanup> StartTrace(int pid, TimeSpan duration, CancellationToken token)
+        public async Task<IStreamWithCleanup> StartTrace(int pid, MonitoringSourceConfiguration configuration, TimeSpan duration, CancellationToken token)
         {
-            DiagnosticsMonitor monitor = new DiagnosticsMonitor(new LoggingSourceConfiguration());
+            DiagnosticsMonitor monitor = new DiagnosticsMonitor(configuration);
             Stream stream = await monitor.ProcessEvents(pid, duration, token);
             return new StreamWithCleanup(monitor, stream);
         }
 
         public async Task StartLogs(Stream outputStream, int pid, TimeSpan duration, CancellationToken token)
         {
-            var loggerFactory = new LoggerFactory();
+            using var loggerFactory = new LoggerFactory();
             loggerFactory.AddProvider(new StreamingLoggerProvider(outputStream));
 
-            var processor = new DiagnosticsEventPipeProcessor(_contextConfiguration,
-                PipeMode.Logs,
-                loggerFactory,
-                Enumerable.Empty<IMetricsLogger>());
+            await using var processor = new DiagnosticsEventPipeProcessor(PipeMode.Logs,
+                loggerFactory: loggerFactory);
 
-            try
-            {
-                await processor.Process(pid, duration, token);
-            }
-            finally
-            {
-                await processor.DisposeAsync();
-                loggerFactory.Dispose();
-            }
+            await processor.Process(pid, duration, token);
         }
 
         private static NETCore.Client.DumpType MapDumpType(DumpType dumpType)
@@ -144,6 +136,13 @@ namespace Microsoft.Diagnostics.Monitoring
                 case 1:
                     return pids[0];
                 default:
+#if DEBUG
+                    Process process = pids.Select(pid => Process.GetProcessById(pid)).FirstOrDefault(p => string.Equals(p.ProcessName, "iisexpress", StringComparison.OrdinalIgnoreCase));
+                    if (process != null)
+                    {
+                        return process.Id;
+                    }
+#endif
                     throw new ArgumentException("Unable to select a single target process because multiple target processes have been discovered.");
             }
         }

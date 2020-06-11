@@ -5,25 +5,27 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Diagnostics;
+using System.Diagnostics.Tracing;
 using System.IO;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Diagnostics.Monitoring.RestServer.Models;
+using Microsoft.Diagnostics.Monitoring.RestServer.Validation;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Extensions.Logging;
-using static System.FormattableString;
 
 namespace Microsoft.Diagnostics.Monitoring.RestServer.Controllers
 {
     [Route("")] // Root
     [ApiController]
+    [HostRestriction]
     public class DiagController : ControllerBase
     {
+        private const TraceProfile DefaultTraceProfiles = TraceProfile.Cpu | TraceProfile.Http | TraceProfile.Metrics;
+
         private readonly ILogger<DiagController> _logger;
         private readonly IDiagnosticServices _diagnosticServices;
 
@@ -36,7 +38,7 @@ namespace Microsoft.Diagnostics.Monitoring.RestServer.Controllers
         [HttpGet("processes")]
         public ActionResult<IEnumerable<ProcessModel>> GetProcesses()
         {
-            return InvokeService(() =>
+            return this.InvokeService(() =>
             {
                 IList<ProcessModel> processes = new List<ProcessModel>();
                 foreach (int pid in _diagnosticServices.GetProcesses())
@@ -48,118 +50,145 @@ namespace Microsoft.Diagnostics.Monitoring.RestServer.Controllers
         }
 
         [HttpGet("dump/{pid?}")]
-        public Task<ActionResult> GetDump(int? pid, [FromQuery]DumpType type = DumpType.WithHeap)
+        public Task<ActionResult> GetDump(int? pid, [FromQuery] DumpType type = DumpType.WithHeap)
         {
-            return InvokeService(async () =>
+            return this.InvokeService(async () =>
             {
                 int pidValue = _diagnosticServices.ResolveProcess(pid);
                 Stream result = await _diagnosticServices.GetDump(pidValue, type);
 
-                FormattableString dumpFileName;
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    // This assumes that Windows does not have shared process spaces
-                    Process process = Process.GetProcessById(pidValue);
-                    dumpFileName = $"{process.ProcessName}.{pidValue}.dmp";
-                }
-                else
-                {
-                    dumpFileName = $"core_{pidValue}";
-                }
+                string dumpFileName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+                    FormattableString.Invariant($"dump_{GetFileNameTimeStampUtcNow()}.dmp") :
+                    FormattableString.Invariant($"core_{GetFileNameTimeStampUtcNow()}");
 
                 //Compression is done automatically by the response
                 //Chunking is done because the result has no content-length
-                return File(result, "application/octet-stream", Invariant(dumpFileName));
+                return File(result, "application/octet-stream", dumpFileName);
             });
         }
 
-        [HttpGet("cpuprofile/{pid?}")]
-        public Task<ActionResult> CpuProfile(int? pid, [FromQuery][Range(-1, int.MaxValue)]int durationSeconds = 30)
+        [HttpGet("gcdump/{pid?}")]
+        public Task<ActionResult> GetGcDump(int? pid)
         {
-            TimeSpan duration = ConvertSecondsToTimeSpan(durationSeconds);
-            return InvokeService(async () =>
+            return this.InvokeService(async () =>
             {
                 int pidValue = _diagnosticServices.ResolveProcess(pid);
-                IStreamWithCleanup result = await _diagnosticServices.StartCpuTrace(pidValue, duration, this.HttpContext.RequestAborted);
-                return new StreamWithCleanupResult(result, "application/octet-stream", Invariant($"{Guid.NewGuid()}.nettrace"));
+                Stream result = await _diagnosticServices.GetGcDump(pidValue, this.HttpContext.RequestAborted);
+                return File(result, "application/octet-stream", FormattableString.Invariant($"{GetFileNameTimeStampUtcNow()}_{pidValue}.gcdump"));
             });
         }
 
         [HttpGet("trace/{pid?}")]
-        public Task<ActionResult> Trace(int? pid, [FromQuery][Range(-1, int.MaxValue)]int durationSeconds = 30)
+        public Task<ActionResult> Trace(
+            int? pid,
+            [FromQuery]TraceProfile profile = DefaultTraceProfiles,
+            [FromQuery][Range(-1, int.MaxValue)] int durationSeconds = 30,
+            [FromQuery][Range(1, int.MaxValue)] int metricsIntervalSeconds = 1)
         {
             TimeSpan duration = ConvertSecondsToTimeSpan(durationSeconds);
-            return InvokeService(async () =>
+
+            return this.InvokeService(async () =>
             {
-                int pidValue = _diagnosticServices.ResolveProcess(pid);
-                IStreamWithCleanup result = await _diagnosticServices.StartTrace(pidValue, duration, this.HttpContext.RequestAborted);
-                return new StreamWithCleanupResult(result, "application/octet-stream", Invariant($"{Guid.NewGuid()}.nettrace"));
+                var configurations = new List<MonitoringSourceConfiguration>();
+                if (profile.HasFlag(TraceProfile.Cpu))
+                {
+                    configurations.Add(new CpuProfileConfiguration());
+                }
+                if (profile.HasFlag(TraceProfile.Http))
+                {
+                    configurations.Add(new HttpRequestSourceConfiguration());
+                }
+                if (profile.HasFlag(TraceProfile.Logs))
+                {
+                    configurations.Add(new LoggingSourceConfiguration());
+                }
+                if (profile.HasFlag(TraceProfile.Metrics))
+                {
+                    configurations.Add(new MetricSourceConfiguration(metricsIntervalSeconds));
+                }
+
+                var aggregateConfiguration = new AggregateSourceConfiguration(configurations.ToArray());
+
+                return await StartTrace(pid, aggregateConfiguration, duration);
+            });
+        }
+
+        [HttpPost("trace/{pid?}")]
+        public Task<ActionResult> TraceCustomConfiguration(
+            int? pid,
+            [FromBody][Required] EventPipeConfigurationModel configuration,
+            [FromQuery][Range(-1, int.MaxValue)] int durationSeconds = 30)
+        {
+            TimeSpan duration = ConvertSecondsToTimeSpan(durationSeconds);
+
+            return this.InvokeService(async () =>
+            {
+                var providers = new List<EventPipeProvider>();
+
+                foreach (EventPipeProviderModel providerModel in configuration.Providers)
+                {
+                    if (!IntegerOrHexStringAttribute.TryParse(providerModel.Keywords, out long keywords, out string parseError))
+                    {
+                        throw new InvalidOperationException(parseError);
+                    }
+
+                    providers.Add(new EventPipeProvider(
+                        providerModel.Name,
+                        MapEventLevel(providerModel.EventLevel),
+                        keywords,
+                        providerModel.Arguments
+                        ));
+                }
+
+                var traceConfiguration = new EventPipeProviderSourceConfiguration(
+                    providers: providers.ToArray(),
+                    requestRundown: configuration.RequestRundown,
+                    bufferSizeInMB: configuration.BufferSizeInMB);
+
+                return await StartTrace(pid, traceConfiguration, duration);
             });
         }
 
         [HttpGet("logs/{pid?}")]
-        public ActionResult Logs(int? pid, [FromQuery][Range(-1, int.MaxValue)]int durationSeconds = 30)
+        public ActionResult Logs(int? pid, [FromQuery][Range(-1, int.MaxValue)] int durationSeconds = 30)
         {
             TimeSpan duration = ConvertSecondsToTimeSpan(durationSeconds);
-            return InvokeService(() =>
+            return this.InvokeService(() =>
             {
                 int pidValue = _diagnosticServices.ResolveProcess(pid);
                 return new OutputStreamResult(async (outputStream, token) =>
                 {
                     await _diagnosticServices.StartLogs(outputStream, pidValue, duration, token);
-                }, "application/x-ndjson", Invariant($"{Guid.NewGuid()}.txt"));
+                }, "application/x-ndjson", FormattableString.Invariant($"{Guid.NewGuid()}.txt"));
             });
         }
 
-        private ActionResult InvokeService(Func<ActionResult> serviceCall)
+        private async Task<StreamWithCleanupResult> StartTrace(int? pid, MonitoringSourceConfiguration configuration, TimeSpan duration)
         {
-            //We can convert ActionResult to ActionResult<T>
-            //and then safely convert back.
-            return InvokeService<object>(() => serviceCall()).Result;
+            int pidValue = _diagnosticServices.ResolveProcess(pid);
+            IStreamWithCleanup result = await _diagnosticServices.StartTrace(pidValue, configuration, duration, this.HttpContext.RequestAborted);
+            return new StreamWithCleanupResult(result, "application/octet-stream", FormattableString.Invariant($"{Guid.NewGuid()}.nettrace"));
         }
 
-        private ActionResult<T> InvokeService<T>(Func<ActionResult<T>> serviceCall)
+        private static EventLevel MapEventLevel(EventPipeProviderEventLevel eventLevel)
         {
-            //Convert from ActionResult<T> to Task<ActionResult<T>>
-            //and safely convert back.
-            return InvokeService(() => Task.FromResult(serviceCall())).Result;
-        }
-
-        private async Task<ActionResult> InvokeService(Func<Task<ActionResult>> serviceCall)
-        {
-            //Task<ActionResult> -> Task<ActionResult<T>>
-            //Then unwrap the result back to ActionResult
-            ActionResult<object> result = await InvokeService<object>(async () => await serviceCall());
-            return result.Result;
-        }
-
-        private async Task<ActionResult<T>> InvokeService<T>(Func<Task<ActionResult<T>>> serviceCall)
-        {
-            try
+            switch (eventLevel)
             {
-                return await serviceCall();
+                case EventPipeProviderEventLevel.Critical:
+                    return EventLevel.Critical;
+                case EventPipeProviderEventLevel.Error:
+                    return EventLevel.Error;
+                case EventPipeProviderEventLevel.Informational:
+                    return EventLevel.Informational;
+                case EventPipeProviderEventLevel.LogAlways:
+                    return EventLevel.LogAlways;
+                case EventPipeProviderEventLevel.Verbose:
+                    return EventLevel.Verbose;
+                case EventPipeProviderEventLevel.Warning:
+                    return EventLevel.Warning;
+                default:
+                    throw new ArgumentException("Unexpected event level", nameof(eventLevel));
             }
-            catch (ArgumentException e)
-            {
-                return BadRequest(FromException(e));
-            }
-            catch (DiagnosticsClientException e)
-            {
-                return BadRequest(FromException(e));
-            }
-            catch (InvalidOperationException e)
-            {
-                return BadRequest(FromException(e));
-            }
-        }
-
-        private static ProblemDetails FromException(Exception e)
-        {
-            return new ProblemDetails
-            {
-                Detail = e.Message,
-                Status = (int)HttpStatusCode.BadRequest
-            };
         }
 
         private static TimeSpan ConvertSecondsToTimeSpan(int durationSeconds)
@@ -167,6 +196,11 @@ namespace Microsoft.Diagnostics.Monitoring.RestServer.Controllers
             return durationSeconds < 0 ?
                 Timeout.InfiniteTimeSpan :
                 TimeSpan.FromSeconds(durationSeconds);
+        }
+
+        private static string GetFileNameTimeStampUtcNow()
+        {
+            return DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
         }
     }
 }

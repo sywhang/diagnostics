@@ -5,6 +5,7 @@
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Diagnostics.Monitoring;
+using Microsoft.Diagnostics.Monitoring.RestServer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,7 @@ using System.Collections.Generic;
 using System.CommandLine;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -20,58 +22,43 @@ namespace Microsoft.Diagnostics.Tools.Monitor
 {
     internal sealed class DiagnosticsMonitorCommandHandler
     {
-        private sealed class ConsoleLoggerAdapter : ILogger<DiagnosticsMonitor>
+        private const string ConfigPrefix = "DotnetMonitor_";
+        private const string ConfigPath = "/etc/dotnet-monitor";
+
+        public async Task<int> Start(CancellationToken token, IConsole console, string[] urls, string[] metricUrls, bool metrics)
         {
-            private readonly IConsole _console;
-
-            private sealed class EmptyScope : IDisposable
-            {
-                public static EmptyScope Instance { get; } = new EmptyScope();
-
-                public void Dispose() { }
-            }
-
-            public ConsoleLoggerAdapter(IConsole console)
-            {
-                _console = console;
-            }
-
-            public IDisposable BeginScope<TState>(TState state)
-            {
-                return EmptyScope.Instance;
-            }
-
-            public bool IsEnabled(LogLevel logLevel) => true;
-
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
-            {
-                _console.Out.WriteLine((formatter != null) ? formatter.Invoke(state, exception) : state?.ToString());
-            }
-        }
-
-        public async Task<int> Start(CancellationToken token, IConsole console, string[] urls)
-        {
-            //CONSIDER The console sink uses the standard AddConsole, and therefore disregards IConsole.
-            using IWebHost host = CreateWebHostBuilder(console, urls).Build();
+            //CONSIDER The console logger uses the standard AddConsole, and therefore disregards IConsole.
+            using IWebHost host = CreateWebHostBuilder(console, urls, metricUrls, metrics).Build();
             await host.RunAsync(token);
             return 0;
         }
 
-        public IWebHostBuilder CreateWebHostBuilder(IConsole console, string[] urls)
+        public IWebHostBuilder CreateWebHostBuilder(IConsole console, string[] urls, string[] metricUrls, bool metrics)
         {
+            if (metrics)
+            {
+                urls = urls.Concat(metricUrls).ToArray();
+            }
+
             IWebHostBuilder builder = WebHost.CreateDefaultBuilder()
                 .ConfigureAppConfiguration((IConfigurationBuilder builder) =>
                 {
-                    ConfigureNames(builder);
+                    if (metrics)
+                    {
+                        //Note these are in precedence order.
+                        ConfigureMetricsEndpoint(builder, metricUrls);
+                        builder.AddKeyPerFile(ConfigPath, optional: true);
+                        builder.AddEnvironmentVariables(ConfigPrefix);
+                    }
                 })
                 .ConfigureServices((WebHostBuilderContext context, IServiceCollection services) =>
                 {
                     //TODO Many of these service additions should be done through extension methods
                     services.AddSingleton<IDiagnosticServices, DiagnosticServices>();
-
-                    //Specialized logger for diagnostic output from the service itself rather than as a sink for the data
-                    services.AddSingleton<ILogger<DiagnosticsMonitor>>((sp) => new ConsoleLoggerAdapter(console));
-                    services.Configure<ContextConfiguration>(context.Configuration);
+                    if (metrics)
+                    {
+                        services.Configure<PrometheusConfiguration>(context.Configuration.GetSection(nameof(PrometheusConfiguration)));
+                    }
                 })
                 .UseUrls(urls)
                 .UseStartup<Startup>();
@@ -79,33 +66,20 @@ namespace Microsoft.Diagnostics.Tools.Monitor
             return builder;
         }
 
-        private static void ConfigureNames(IConfigurationBuilder builder)
+        private static void ConfigureMetricsEndpoint(IConfigurationBuilder builder, string[] metricEndpoints)
         {
-            string hostName = Environment.GetEnvironmentVariable("HOSTNAME");
-            if (string.IsNullOrEmpty(hostName))
+            builder.AddInMemoryCollection(new Dictionary<string, string>
             {
-                hostName = Environment.MachineName;
-            }
-            string namespaceName = null;
-            try
-            {
-                string nsFile = @"/var/run/secrets/kubernetes.io/serviceaccount/namespace";
-                if (File.Exists(nsFile))
-                {
-                    namespaceName = File.ReadAllText(nsFile);
-                }
-            }
-            catch
-            {
-            }
+                {MakeKey(nameof(PrometheusConfiguration), nameof(PrometheusConfiguration.Endpoints)), string.Join(';',metricEndpoints)},
+                {MakeKey(nameof(PrometheusConfiguration), nameof(PrometheusConfiguration.Enabled)), true.ToString()},
+                {MakeKey(nameof(PrometheusConfiguration), nameof(PrometheusConfiguration.UpdateIntervalSeconds)), 10.ToString()},
+                {MakeKey(nameof(PrometheusConfiguration), nameof(PrometheusConfiguration.MetricCount)), 3.ToString()}
+            });
+        }
 
-            if (string.IsNullOrEmpty(namespaceName))
-            {
-                namespaceName = "default";
-            }
-
-            builder.AddInMemoryCollection(new Dictionary<string, string> { {DiagnosticsEventPipeProcessor.NamespaceName, namespaceName }, { DiagnosticsEventPipeProcessor.NodeName, hostName } });
-
+        private static string MakeKey(string parent, string child)
+        {
+            return FormattableString.Invariant($"{parent}:{child}");
         }
     }
 }

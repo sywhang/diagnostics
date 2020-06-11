@@ -3,10 +3,6 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Diagnostics.NETCore.Client;
-using Microsoft.Diagnostics.Tracing;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -20,7 +16,7 @@ namespace Microsoft.Diagnostics.Monitoring
     public sealed class DiagnosticsMonitor : IAsyncDisposable
     {
         private readonly MonitoringSourceConfiguration _sourceConfig;
-        private readonly CancellationTokenSource _disposeSource;
+        private readonly CancellationTokenSource _stopProcessingSource;
         private readonly object _lock = new object();
         private Task _currentTask;
         private bool _disposed;
@@ -28,7 +24,7 @@ namespace Microsoft.Diagnostics.Monitoring
         public DiagnosticsMonitor(MonitoringSourceConfiguration sourceConfig)
         {
             _sourceConfig = sourceConfig;
-            _disposeSource = new CancellationTokenSource();
+            _stopProcessingSource = new CancellationTokenSource();
         }
 
         public Task CurrentProcessingTask => _currentTask;
@@ -54,7 +50,7 @@ namespace Microsoft.Diagnostics.Monitoring
 
                 try
                 {
-                    session = client.StartEventPipeSession(_sourceConfig.GetProviders());
+                    session = client.StartEventPipeSession(_sourceConfig.GetProviders(), _sourceConfig.RequestRundown, _sourceConfig.BufferSizeInMB);
                 }
                 catch (EndOfStreamException e)
                 {
@@ -65,7 +61,7 @@ namespace Microsoft.Diagnostics.Monitoring
                     throw new InvalidOperationException("Failed to start the event pipe session", ex);
                 }
 
-                CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(_disposeSource.Token, cancellationToken);
+                CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(_stopProcessingSource.Token, cancellationToken);
 
                 _currentTask = Task.Run( async () =>
                 {
@@ -82,6 +78,11 @@ namespace Microsoft.Diagnostics.Monitoring
 
                 return Task.FromResult(session.EventStream);
             }
+        }
+
+        public void StopProcessing()
+        {
+            _stopProcessingSource.Cancel();
         }
 
         private static void StopSession(EventPipeSession session)
@@ -126,7 +127,7 @@ namespace Microsoft.Diagnostics.Monitoring
                 _currentTask = null;
                 _disposed = true;
             }
-             _disposeSource.Cancel();
+            _stopProcessingSource.Cancel();
             if (currentTask != null)
             {
                 try
@@ -137,7 +138,7 @@ namespace Microsoft.Diagnostics.Monitoring
                 {
                 }
             }
-            _disposeSource?.Dispose();
+            _stopProcessingSource?.Dispose();
         }
     }
 }
