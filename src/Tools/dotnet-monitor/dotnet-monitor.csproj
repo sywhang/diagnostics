@@ -10,6 +10,10 @@
     <PackageTags>Diagnostic</PackageTags>
     <IsShipping>false</IsShipping>
     <PackageReleaseNotes>$(Description)</PackageReleaseNotes>
+    <!-- This forces the creation of a checksum file and uploads it to blob storage
+         using this name as part of the blob relative path. -->
+    <BlobGroupPrefix>monitor</BlobGroupPrefix>
+    <PreReleaseVersionIteration>1</PreReleaseVersionIteration>
   </PropertyGroup>
 
   <ItemGroup>
