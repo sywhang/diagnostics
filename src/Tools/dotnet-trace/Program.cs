@@ -19,6 +19,7 @@ namespace Microsoft.Diagnostics.Tools.Trace
                 .AddCommand(ListProfilesCommandHandler.ListProfilesCommand())
                 .AddCommand(ConvertCommandHandler.ConvertCommand())
                 .AddCommand(RunCommandHandler.RunCommand())
+                .AddCommand(ReportCommandHandler.ReportCommand())
                 .UseDefaults()
                 .Build();
 
