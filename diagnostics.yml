@@ -157,6 +157,21 @@ stages:
                 _BuildConfig: Debug
                 _BuildArch: x64
 
+    - template: /eng/build.yml
+      parameters:
+        name: MacOS_cross
+        osGroup: MacOS_cross
+        strategy:
+          matrix:
+            Build_Release:
+              _BuildConfig: Release
+              _BuildArch: arm64
+              _PublishArtifacts: bin/OSX.arm64.Release
+            ${{ if in(variables['Build.Reason'], 'PullRequest') }}:
+              Build_Debug:
+                _BuildConfig: Debug
+                _BuildArch: arm64
+
     - ${{ if ne(variables['System.TeamProject'], 'public') }}:
       - template: /eng/build.yml
         parameters:
@@ -310,6 +325,7 @@ stages:
             - CentOS_7
             - Alpine3_6
             - MacOS
+            - MacOS_cross
             - Linux_cross
             - Linux_cross64
             - Alpine3_6_cross64
@@ -415,37 +431,19 @@ stages:
                 targetPath: '$(Build.SourcesDirectory)/artifacts/bin/OSX.x64.Release'
               condition: succeeded()
 
+            # MacOS arm64 download
+
+            - task: DownloadPipelineArtifact@2
+              displayName: Download MacOS arm64 Artifacts
+              inputs:
+                artifactName: MacOS_cross_arm64_Release
+                targetPath: '$(Build.SourcesDirectory)/artifacts/bin/OSX.arm64.Release'
+              condition: succeeded()
+
             # Create nuget packages, sign binaries and publish to blob feed
-            
-            - script: $(Build.SourcesDirectory)\eng\cipack.cmd
-                -configuration Release
-                -prepareMachine
-                -verbosity normal
-                $(_InternalBuildArgs)
-              displayName: Package
-              continueOnError: true
-              condition: succeeded()
-
-            - script: $(Build.SourcesDirectory)\build.cmd
-                -configuration Release
-                -ci
-                -bundletools
-                -verbosity normal
-                $(_InternalBuildArgs)
-              displayName: Create Single File Bundles
-              continueOnError: true
-              condition: succeeded()
-
-            - powershell: $(Build.SourcesDirectory)\eng\common\build.ps1
-                -configuration Release
-                -prepareMachine
-                -verbosity normal
-                -restore -publish -sign
-                -ci -nobl
-                /bl:$(Build.SourcesDirectory)/artifacts/log/Release/SignPublish.binlog
-                $(_InternalBuildArgs)
-              displayName: Sign and generate manifests
-              continueOnError: true
+            - script: $(Build.SourcesDirectory)\eng\ci-prepare-artifacts.cmd $(_InternalBuildArgs)
+              displayName: Package, Sign, and Publish
+              continueOnError: false
               condition: succeeded()
 
             # Publish package and log build artifacts
@@ -483,7 +481,11 @@ stages:
         # This is to enable SDL runs part of Post-Build Validation Stage.
         # as well as NuGet, SourceLink, and signing validation.
         # The variables get imported from group dotnet-diagnostics-sdl-params
+        publishingInfraVersion: 3
         enableSourceLinkValidation: true
+        enableSigningValidation: true
+        enableSymbolValidation: false
+        enableNugetValidation: true
         symbolPublishingAdditionalParameters: '/p:PublishSpecialClrFiles=false'
         publishInstallersAndChecksums: true
         SDLValidationParameters:

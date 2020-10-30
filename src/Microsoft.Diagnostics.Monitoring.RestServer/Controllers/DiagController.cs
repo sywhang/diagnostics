@@ -5,15 +5,14 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Diagnostics.Tracing;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Diagnostics.Monitoring.EventPipe;
 using Microsoft.Diagnostics.Monitoring.RestServer.Models;
 using Microsoft.Diagnostics.Monitoring.RestServer.Validation;
 using Microsoft.Diagnostics.NETCore.Client;
@@ -44,16 +43,51 @@ namespace Microsoft.Diagnostics.Monitoring.RestServer.Controllers
         }
 
         [HttpGet("processes")]
-        public Task<ActionResult<IEnumerable<ProcessModel>>> GetProcesses()
+        public Task<ActionResult<IEnumerable<ProcessIdentifierModel>>> GetProcesses()
         {
             return this.InvokeService(async () =>
             {
-                IList<ProcessModel> processes = new List<ProcessModel>();
+                IList<ProcessIdentifierModel> processesIdentifiers = new List<ProcessIdentifierModel>();
                 foreach (IProcessInfo p in await _diagnosticServices.GetProcessesAsync(HttpContext.RequestAborted))
                 {
-                    processes.Add(ProcessModel.FromProcessInfo(p));
+                    processesIdentifiers.Add(ProcessIdentifierModel.FromProcessInfo(p));
                 }
-                return new ActionResult<IEnumerable<ProcessModel>>(processes);
+                return new ActionResult<IEnumerable<ProcessIdentifierModel>>(processesIdentifiers);
+            });
+        }
+
+        [HttpGet("processes/{processFilter}")]
+        public Task<ActionResult<ProcessModel>> GetProcess(
+            ProcessFilter processFilter)
+        {
+            return this.InvokeService<ProcessModel>(async () =>
+            {
+                IProcessInfo processInfo = await _diagnosticServices.GetProcessAsync(
+                    processFilter,
+                    HttpContext.RequestAborted);
+
+                return ProcessModel.FromProcessInfo(processInfo);
+            });
+        }
+
+        [HttpGet("processes/{processFilter}/env")]
+        public Task<ActionResult<Dictionary<string, string>>> GetProcessEnvironment(
+            ProcessFilter processFilter)
+        {
+            return this.InvokeService<Dictionary<string, string>>(async () =>
+            {
+                IProcessInfo processInfo = await _diagnosticServices.GetProcessAsync(
+                    processFilter,
+                    HttpContext.RequestAborted);
+
+                try
+                {
+                    return processInfo.Client.GetProcessEnvironment();
+                }
+                catch (ServerErrorException)
+                {
+                    throw new InvalidOperationException("Unable to get process environment.");
+                }
             });
         }
 
@@ -84,8 +118,27 @@ namespace Microsoft.Diagnostics.Monitoring.RestServer.Controllers
             return this.InvokeService(async () =>
             {
                 IProcessInfo processInfo = await _diagnosticServices.GetProcessAsync(processFilter, HttpContext.RequestAborted);
-                Stream result = await _diagnosticServices.GetGcDump(processInfo, this.HttpContext.RequestAborted);
-                return File(result, "application/octet-stream", FormattableString.Invariant($"{GetFileNameTimeStampUtcNow()}_{processInfo.Pid}.gcdump"));
+
+                var graph = new Graphs.MemoryGraph(50_000);
+
+                EventGCPipelineSettings settings = new EventGCPipelineSettings
+                {
+                    Duration = Timeout.InfiniteTimeSpan,
+                };
+                await using var pipeline = new EventGCDumpPipeline(processInfo.Client, settings, graph);
+                await pipeline.RunAsync(HttpContext.RequestAborted);
+                var dumper = new GCHeapDump(graph);
+                dumper.CreationTool = "dotnet-monitor";
+
+                //We can't use FastSerialization directly against the Response stream because
+                //the response stream size is not known.
+                var stream = new MemoryStream();
+                var serializer = new FastSerialization.Serializer(stream, dumper, leaveOpen: true);
+                serializer.Close();
+
+                stream.Position = 0;
+
+                return File(stream, "application/octet-stream", FormattableString.Invariant($"{GetFileNameTimeStampUtcNow()}_{processInfo.ProcessId}.gcdump"));
             });
         }
 
@@ -115,7 +168,7 @@ namespace Microsoft.Diagnostics.Monitoring.RestServer.Controllers
                 }
                 if (profile.HasFlag(TraceProfile.Metrics))
                 {
-                    configurations.Add(new MetricSourceConfiguration(metricsIntervalSeconds));
+                    configurations.Add(new MetricSourceConfiguration(metricsIntervalSeconds, Enumerable.Empty<string>()));
                 }
 
                 var aggregateConfiguration = new AggregateSourceConfiguration(configurations.ToArray());
@@ -179,23 +232,50 @@ namespace Microsoft.Diagnostics.Monitoring.RestServer.Controllers
                 }
 
                 string contentType = (format == LogFormat.EventStream) ? ContentTypeEventStream : ContentTypeNdJson;
-                string downloadName = (format == LogFormat.EventStream) ? null : FormattableString.Invariant($"{GetFileNameTimeStampUtcNow()}_{processInfo.Pid}.txt");
+                string downloadName = (format == LogFormat.EventStream) ? null : FormattableString.Invariant($"{GetFileNameTimeStampUtcNow()}_{processInfo.ProcessId}.txt");
 
                 return new OutputStreamResult(async (outputStream, token) =>
                 {
-                    await _diagnosticServices.StartLogs(outputStream, processInfo, duration, format, level, token);
+                    using var loggerFactory = new LoggerFactory();
+
+                    loggerFactory.AddProvider(new StreamingLoggerProvider(outputStream, format, level));
+
+                    var settings = new EventLogsPipelineSettings
+                    {
+                        Duration = duration,
+                        LogLevel = level,
+                    };
+                    await using EventLogsPipeline pipeline = new EventLogsPipeline(processInfo.Client, settings, loggerFactory);
+                    await pipeline.RunAsync(token);
+
                 }, contentType, downloadName);
             });
         }
 
-        private async Task<StreamWithCleanupResult> StartTrace(
+        private async Task<ActionResult> StartTrace(
             ProcessFilter? processFilter,
             MonitoringSourceConfiguration configuration,
             TimeSpan duration)
         {
             IProcessInfo processInfo = await _diagnosticServices.GetProcessAsync(processFilter, HttpContext.RequestAborted);
-            IStreamWithCleanup result = await _diagnosticServices.StartTrace(processInfo, configuration, duration, this.HttpContext.RequestAborted);
-            return new StreamWithCleanupResult(result, "application/octet-stream", FormattableString.Invariant($"{GetFileNameTimeStampUtcNow()}_{processInfo.Pid}.nettrace"));
+
+            return new OutputStreamResult(async (outputStream, token) =>
+            {
+                Func<Stream, CancellationToken, Task> streamAvailable = async (Stream eventStream, CancellationToken token) =>
+                {
+                    //Buffer size matches FileStreamResult
+                    //CONSIDER Should we allow client to change the buffer size?
+                    await eventStream.CopyToAsync(outputStream, 0x10000, token);
+                };
+
+                await using EventTracePipeline pipeProcessor = new EventTracePipeline(processInfo.Client, new EventTracePipelineSettings
+                {
+                    Configuration = configuration,
+                    Duration = duration,
+                }, streamAvailable);
+
+                await pipeProcessor.RunAsync(token);
+            }, "application/octet-stream", FormattableString.Invariant($"{GetFileNameTimeStampUtcNow()}_{processInfo.ProcessId}.nettrace"));
         }
 
         private static TimeSpan ConvertSecondsToTimeSpan(int durationSeconds)

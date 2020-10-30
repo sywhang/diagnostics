@@ -562,6 +562,8 @@ namespace Output
         DML_ManagedVar,
         DML_Async,
         DML_IL,
+        DML_ComWrapperRCW,
+        DML_ComWrapperCCW
     };
 
     /**********************************************************************\
@@ -667,6 +669,8 @@ inline void ExtOutIndent()  { WhitespaceOut(Output::g_Indent << 2); }
 #define DMLManagedVar(expansionName,frame,simpleName) Output::BuildManagedVarValue(expansionName, frame, simpleName, Output::DML_ManagedVar).GetPtr()
 #define DMLAsync(addr) Output::BuildHexValue(addr, Output::DML_Async).GetPtr()
 #define DMLIL(addr) Output::BuildHexValue(addr, Output::DML_IL).GetPtr()
+#define DMLComWrapperRCW(addr) Output::BuildHexValue(addr, Output::DML_ComWrapperRCW).GetPtr()
+#define DMLComWrapperCCW(addr) Output::BuildHexValue(addr, Output::DML_ComWrapperCCW).GetPtr()
 
 bool IsDMLEnabled();
 
@@ -1600,9 +1604,10 @@ void IP2MethodDesc (DWORD_PTR IP, DWORD_PTR &methodDesc, JITTypes &jitType,
 const char *ElementTypeName (unsigned type);
 void DisplayFields (CLRDATA_ADDRESS cdaMT, DacpMethodTableData *pMTD, DacpMethodTableFieldData *pMTFD,
                     DWORD_PTR dwStartAddr = 0, BOOL bFirst=TRUE, BOOL bValueClass=FALSE);
+HRESULT GetNonSharedStaticFieldValueFromName(UINT64* pValue, DWORD_PTR moduleAddr, const char *typeName, __in_z LPCWSTR wszFieldName, CorElementType fieldType);
 int GetObjFieldOffset(CLRDATA_ADDRESS cdaObj, __in_z LPCWSTR wszFieldName, BOOL bFirst=TRUE);
 int GetObjFieldOffset(CLRDATA_ADDRESS cdaObj, CLRDATA_ADDRESS cdaMT, __in_z LPCWSTR wszFieldName, BOOL bFirst=TRUE, DacpFieldDescData* pDacpFieldDescData=NULL);
-int GetValueFieldOffset(CLRDATA_ADDRESS cdaMT, __in_z LPCWSTR wszFieldName, DacpFieldDescData* pDacpFieldDescData);
+int GetValueFieldOffset(CLRDATA_ADDRESS cdaMT, __in_z LPCWSTR wszFieldName, DacpFieldDescData* pDacpFieldDescData=NULL);
 
 BOOL IsValidToken(DWORD_PTR ModuleAddr, mdTypeDef mb);
 void NameForToken_s(DacpModuleData *pModule, mdTypeDef mb, __out_ecount (capacity_mdName) WCHAR *mdName, size_t capacity_mdName,
@@ -1784,6 +1789,7 @@ WCHAR *CreateMethodTableName(TADDR mt, TADDR cmt = NULL);
 
 void isRetAddr(DWORD_PTR retAddr, DWORD_PTR* whereCalled);
 DWORD_PTR GetValueFromExpression (___in __in_z const char *const str);
+void LoadRuntimeSymbols();
 
 enum ModuleHeapType
 {

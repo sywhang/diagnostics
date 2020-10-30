@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Diagnostics.Monitoring;
 using Microsoft.Diagnostics.NETCore.Client;
+using Microsoft.Diagnostics.NETCore.Client.UnitTests;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -116,11 +117,14 @@ namespace DotnetMonitor.UnitTests
             {
                 await newEndpointInfoTask;
 
-                execution1.Start();
+                execution1.SendSignal();
 
                 endpointInfos = await GetEndpointInfoAsync(source);
 
                 var endpointInfo = Assert.Single(endpointInfos);
+                Assert.NotNull(endpointInfo.CommandLine);
+                Assert.NotNull(endpointInfo.OperatingSystem);
+                Assert.NotNull(endpointInfo.ProcessArchitecture);
                 VerifyConnection(execution1.TestRunner, endpointInfo);
 
                 _outputHelper.WriteLine("Stopping tracee.");
@@ -169,7 +173,7 @@ namespace DotnetMonitor.UnitTests
         private sealed class TestServerEndpointInfoSource : ServerEndpointInfoSource
         {
             private readonly ITestOutputHelper _outputHelper;
-            private readonly List<TaskCompletionSource<IpcEndpointInfo>> _addedEndpointInfoSources = new List<TaskCompletionSource<IpcEndpointInfo>>();
+            private readonly List<TaskCompletionSource<EndpointInfo>> _addedEndpointInfoSources = new List<TaskCompletionSource<EndpointInfo>>();
 
             public TestServerEndpointInfoSource(string transportPath, ITestOutputHelper outputHelper)
                 : base(transportPath)
@@ -177,9 +181,9 @@ namespace DotnetMonitor.UnitTests
                 _outputHelper = outputHelper;
             }
 
-            public async Task<IpcEndpointInfo> WaitForNewEndpointInfoAsync(TimeSpan timeout)
+            public async Task<EndpointInfo> WaitForNewEndpointInfoAsync(TimeSpan timeout)
             {
-                TaskCompletionSource<IpcEndpointInfo> addedEndpointInfoSource = new TaskCompletionSource<IpcEndpointInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+                TaskCompletionSource<EndpointInfo> addedEndpointInfoSource = new TaskCompletionSource<EndpointInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
                 using var timeoutCancellation = new CancellationTokenSource();
                 var token = timeoutCancellation.Token;
                 using var _ = token.Register(() => addedEndpointInfoSource.TrySetCanceled(token));
@@ -191,15 +195,15 @@ namespace DotnetMonitor.UnitTests
 
                 _outputHelper.WriteLine("Waiting for new endpoint info.");
                 timeoutCancellation.CancelAfter(timeout);
-                IpcEndpointInfo endpointInfo = await addedEndpointInfoSource.Task;
+                EndpointInfo endpointInfo = await addedEndpointInfoSource.Task;
                 _outputHelper.WriteLine("Notified of new endpoint info.");
 
                 return endpointInfo;
             }
 
-            internal override void OnAddedEndpointInfo(IpcEndpointInfo info)
+            internal override void OnAddedEndpointInfo(EndpointInfo info)
             {
-                _outputHelper.WriteLine($"Added endpoint info to collection: {info.ToTestString()}");
+                _outputHelper.WriteLine($"Added endpoint info to collection: {info.DebuggerDisplay}");
                 
                 lock (_addedEndpointInfoSources)
                 {
@@ -211,9 +215,9 @@ namespace DotnetMonitor.UnitTests
                 }
             }
 
-            internal override void OnRemovedEndpointInfo(IpcEndpointInfo info)
+            internal override void OnRemovedEndpointInfo(EndpointInfo info)
             {
-                _outputHelper.WriteLine($"Removed endpoint info from collection: {info.ToTestString()}");
+                _outputHelper.WriteLine($"Removed endpoint info from collection: {info.DebuggerDisplay}");
             }
         }
     }

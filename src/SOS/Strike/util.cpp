@@ -97,6 +97,8 @@ void __cdecl operator delete[](void* pObj) throw()
 DWORD_PTR GetValueFromExpression(___in __in_z const char *const instr)
 {
     _ASSERTE(g_pRuntime != nullptr);
+    LoadRuntimeSymbols();
+
     std::string symbol;
     symbol.append(GetRuntimeModuleName());
     symbol.append("!");
@@ -1064,6 +1066,125 @@ void DisplayFields(CLRDATA_ADDRESS cdaMT, DacpMethodTableData *pMTD, DacpMethodT
     }
     
     return;
+}
+
+HRESULT GetNonSharedStaticFieldValueFromName(
+    UINT64* pValue,
+    DWORD_PTR moduleAddr,
+    const char *typeName,
+    __in_z LPCWSTR wszFieldName,
+    CorElementType fieldType)
+{
+    HRESULT hr = S_OK;
+
+    mdTypeDef mdType = 0;
+    GetInfoFromName(moduleAddr, typeName, &mdType);
+    if (mdType == 0)
+    {
+        return E_FAIL; // Failed to find type token
+    }
+
+    CLRDATA_ADDRESS cdaMethodTable = 0;
+    if (FAILED(hr = g_sos->GetMethodDescFromToken(moduleAddr, mdType, &cdaMethodTable)) ||
+        !IsValidToken(moduleAddr, mdType) ||
+        cdaMethodTable == 0)
+    {
+        return FAILED(hr) ? hr : E_FAIL; // Invalid type token or type is not loaded yet
+    }
+
+    DacpMethodTableData vMethodTable;
+    if ((hr = vMethodTable.Request(g_sos, cdaMethodTable)) != S_OK)
+    {
+        return FAILED(hr) ? hr : E_FAIL; // Failed to get method table data
+    }
+    if (vMethodTable.bIsShared)
+    {
+        ExtOut("    %s: %s\n", "Method table is shared (not implemented)", typeName);
+        return E_NOTIMPL;
+    }
+
+    DacpMethodTableFieldData vMethodTableFields;
+    if (FAILED(hr = vMethodTableFields.Request(g_sos, cdaMethodTable)))
+    {
+        return hr; // Failed to get field data
+    }
+
+    DacpModuleData vModule;
+    if ((hr = vModule.Request(g_sos, vMethodTable.Module)) != S_OK)
+    {
+        return FAILED(hr) ? hr : E_FAIL; // Failed to get module data
+    }
+
+    DacpDomainLocalModuleData vDomainLocalModule;
+    if ((hr = g_sos->GetDomainLocalModuleDataFromModule(vMethodTable.Module, &vDomainLocalModule)) != S_OK)
+    {
+        return FAILED(hr) ? hr : E_FAIL; // Failed to get domain local module data
+    }
+
+    ToRelease<IMetaDataImport> pImport = MDImportForModule(&vModule);
+    CLRDATA_ADDRESS cdaField = vMethodTableFields.FirstField;
+    DacpFieldDescData vFieldDesc;
+    bool found = false;
+    for (DWORD staticFieldIndex = 0; staticFieldIndex < vMethodTableFields.wNumStaticFields; )
+    {
+        if ((hr = vFieldDesc.Request(g_sos, cdaField)) != S_OK || vFieldDesc.Type >= ELEMENT_TYPE_MAX)
+        {
+            return FAILED(hr) ? hr : E_FAIL; // Failed to get member field desc
+        }
+        cdaField = vFieldDesc.NextField;
+
+        if (!vFieldDesc.bIsStatic)
+        {
+            continue;
+        }
+
+        ++staticFieldIndex;
+
+        if (vFieldDesc.Type != fieldType)
+        {
+            continue;
+        }
+
+        if (FAILED(hr = NameForToken_s(TokenFromRid(vFieldDesc.mb, mdtFieldDef), pImport, g_mdName, mdNameLen, false)))
+        {
+            return hr; // Failed to get member field name
+        }
+
+        if (_wcscmp(g_mdName, wszFieldName) != 0)
+        {
+            continue;
+        }
+
+        if (vFieldDesc.bIsThreadLocal || vFieldDesc.bIsContextLocal)
+        {
+            ExtOut("    %s: %s.%S\n", "Static field is thread-local or context-local (not implemented)", typeName, wszFieldName);
+            return E_NOTIMPL;
+        }
+
+        found = true;
+        break;
+    }
+
+    if (!found)
+    {
+        return E_FAIL; // Static field not found
+    }
+
+    DWORD_PTR pValueAddr = 0;
+    GetStaticFieldPTR(&pValueAddr, &vDomainLocalModule, &vMethodTable, &vFieldDesc);
+    if (pValueAddr == 0)
+    {
+        return E_FAIL; // Failed to get static field address
+    }
+
+    UINT64 value = 0;
+    if (FAILED(MOVEBLOCK(value, pValueAddr, gElementTypeInfo[fieldType])))
+    {
+        return E_FAIL; // Failed to read static field
+    }
+
+    *pValue = value;
+    return S_OK;
 }
 
 // Return value: -1 = error, 
@@ -2137,9 +2258,13 @@ DWORD_PTR *ModuleFromName(__in_opt LPSTR mName, int *numModule)
     DWORD_PTR *moduleList = NULL;
     *numModule = 0;
 
+    HRESULT hr;
     DacpAppDomainStoreData adsData;
-    if (adsData.Request(g_sos) != S_OK)
+    if ((hr = adsData.Request(g_sos)) != S_OK)
+    {
+        ExtDbgOut("DacpAppDomainStoreData.Request FAILED %08x\n", hr);
         return NULL;
+    }
 
     ArrayHolder<CLRDATA_ADDRESS> pAssemblyArray = NULL;
     ArrayHolder<CLRDATA_ADDRESS> pModules = NULL;
@@ -2162,9 +2287,9 @@ DWORD_PTR *ModuleFromName(__in_opt LPSTR mName, int *numModule)
     {
         pArray[1] = adsData.sharedDomain;
     }
-    if (g_sos->GetAppDomainList(adsData.DomainCount, pArray.GetPtr() + numSpecialDomains, NULL) != S_OK)
+    if ((hr = g_sos->GetAppDomainList(adsData.DomainCount, pArray.GetPtr() + numSpecialDomains, NULL)) != S_OK)
     {
-        ExtOut("Unable to get array of AppDomains\n");
+        ExtOut("Unable to get array of AppDomains: %08x\n", hr);
         return NULL;
     }
 
@@ -2196,7 +2321,7 @@ DWORD_PTR *ModuleFromName(__in_opt LPSTR mName, int *numModule)
         }
         
         DacpAppDomainData appDomain;
-        if (FAILED(appDomain.Request(g_sos, pArray[n])))
+        if (FAILED(hr = appDomain.Request(g_sos, pArray[n])))
         {
             // Don't print a failure message here, there is a very normal case when checking
             // for modules after clr is loaded but before any AppDomains or assemblies are created
@@ -2208,6 +2333,7 @@ DWORD_PTR *ModuleFromName(__in_opt LPSTR mName, int *numModule)
             // >!bpmd Foo.dll Foo.Bar
 
             // we will correctly give the answer that whatever module you were looking for, it isn't loaded yet
+            ExtDbgOut("DacpAppDomainData.Request FAILED %08x\n", hr);
             goto Failure;
         }
 
@@ -2220,9 +2346,9 @@ DWORD_PTR *ModuleFromName(__in_opt LPSTR mName, int *numModule)
                 goto Failure;
             }
 
-            if (FAILED(g_sos->GetAssemblyList(appDomain.AppDomainPtr, appDomain.AssemblyCount, pAssemblyArray, NULL)))
+            if (FAILED(hr = g_sos->GetAssemblyList(appDomain.AppDomainPtr, appDomain.AssemblyCount, pAssemblyArray, NULL)))
             {
-                ExtOut("Unable to get array of Assemblies for the given AppDomain\n");
+                ExtOut("Unable to get array of Assemblies for the given AppDomain: %08x\n", hr);
                 goto Failure;
             }
 
@@ -2235,16 +2361,16 @@ DWORD_PTR *ModuleFromName(__in_opt LPSTR mName, int *numModule)
                 }
 
                 DacpAssemblyData assemblyData;
-                if (FAILED(assemblyData.Request(g_sos, pAssemblyArray[nAssem])))
+                if (FAILED(hr = assemblyData.Request(g_sos, pAssemblyArray[nAssem])))
                 {
-                    ExtOut("Failed to request assembly\n");
+                    ExtOut("Failed to request assembly: %08x\n", hr);
                     goto Failure;
                 }
 
                 pModules = new CLRDATA_ADDRESS[assemblyData.ModuleCount];
-                if (FAILED(g_sos->GetAssemblyModuleList(assemblyData.AssemblyPtr, assemblyData.ModuleCount, pModules, NULL)))
+                if (FAILED(hr = g_sos->GetAssemblyModuleList(assemblyData.AssemblyPtr, assemblyData.ModuleCount, pModules, NULL)))
                 {
-                    ExtOut("Failed to get the modules for the given assembly\n");
+                    ExtOut("Failed to get the modules for the given assembly: %08x\n", hr);
                     goto Failure;
                 }
 
@@ -2258,9 +2384,9 @@ DWORD_PTR *ModuleFromName(__in_opt LPSTR mName, int *numModule)
 
                     CLRDATA_ADDRESS ModuleAddr = pModules[nModule];
                     DacpModuleData ModuleData;
-                    if (FAILED(ModuleData.Request(g_sos, ModuleAddr)))
+                    if (FAILED(hr = ModuleData.Request(g_sos, ModuleAddr)))
                     {
-                        ExtDbgOut("Failed to request module data from assembly at %p\n", ModuleAddr);
+                        ExtDbgOut("Failed to request module data from assembly at %p %08x\n", ModuleAddr, hr);
                         continue;
                     }
 
@@ -4004,6 +4130,39 @@ HRESULT LoadClrDebugDll(void)
     return S_OK;
 }
 
+/// <summary>
+/// Loads the runtime module symbols for the commands like dumplog that 
+/// lookup runtime symbols. This is done on-demand because it takes a 
+/// long time under windbg/cdb and not needed for most commands.
+/// </summary>
+void LoadRuntimeSymbols()
+{
+    _ASSERTE(g_pRuntime != nullptr);
+#ifndef FEATURE_PAL
+    ULONG64 moduleAddress = g_pRuntime->GetModuleAddress();
+
+    DEBUG_MODULE_PARAMETERS params;
+    HRESULT hr = g_ExtSymbols->GetModuleParameters(1, &moduleAddress, 0, &params);
+    if (SUCCEEDED(hr))
+    {
+        if (params.SymbolType == SymDeferred)
+        {
+            PCSTR runtimeDllName = ::GetRuntimeDllName();
+            std::string reloadCommand;
+            reloadCommand.append("/f ");
+            reloadCommand.append(runtimeDllName);
+            g_ExtSymbols->Reload(reloadCommand.c_str());
+            g_ExtSymbols->GetModuleParameters(1, &moduleAddress, 0, &params);
+
+            if (params.SymbolType != SymPdb && params.SymbolType != SymDia)
+            {
+                ExtOut("Symbols for %s not loaded. Some SOS commands may not work.\n", runtimeDllName);
+            }
+        }
+    }
+#endif
+}
+
 typedef enum
 {
     GC_HEAP_INVALID = 0,
@@ -4054,8 +4213,10 @@ BOOL GetGcStructuresValid()
     // We don't want to use the cached HeapData, because this can change
     // each time the program runs for a while.
     DacpGcHeapData heapData;
-    if (heapData.Request(g_sos) != S_OK)
+    HRESULT hr;
+    if ((hr = heapData.Request(g_sos)) != S_OK)
     {
+        ExtOut("GetGcStructuresValid: request heap data FAILED %08x\n", hr);
         return FALSE;
     }
 
@@ -4594,6 +4755,8 @@ const char * const DMLFormats[] =
     "<exec cmd=\"!ClrStack -i %S %d\">%S</exec>",   // DML_ManagedVar
     "<exec cmd=\"!DumpAsync -addr %s -tasks -completed -fields -stacks -roots\">%s</exec>", // DML_Async
     "<exec cmd=\"!DumpIL /i %s\">%s</exec>",         // DML_IL
+    "<exec cmd=\"!DumpRCW -cw /d %s\">%s</exec>",    // DML_ComWrapperRCW
+    "<exec cmd=\"!DumpCCW -cw /d %s\">%s</exec>",    // DML_ComWrapperCCW
 };
 
 void ConvertToLower(__out_ecount(len) char *buffer, size_t len)
@@ -5666,9 +5829,22 @@ void PopulateMetadataRegions()
                     {
                         MemoryRegion region(moduleData.metadataStart, moduleData.metadataStart + moduleData.metadataSize, moduleData.File);
                         g_metadataRegions.insert(region);
+#ifdef DUMP_METADATA_INFO
+                        ArrayHolder<WCHAR> name = new WCHAR[MAX_LONGPATH];
+                        name[0] = '\0';
+                        if (moduleData.File != 0)
+                        {
+                            g_sos->GetPEFileName(moduleData.File, MAX_LONGPATH, name.GetPtr(), NULL);
+                        }
+                        ExtOut("%016x %016x %016x %S\n", moduleData.metadataStart, moduleData.metadataStart + moduleData.metadataSize, moduleData.metadataSize, name.GetPtr());
+#endif
                     }
                 }
             }
+        }
+        else
+        {
+            ExtDbgOut("PopulateMetadataRegions ModuleFromName returns null\n");
         }
     }
 }
