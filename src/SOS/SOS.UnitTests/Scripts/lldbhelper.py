@@ -1,6 +1,12 @@
-import lldb
+import sys
+import traceback
 
 def __lldb_init_module(debugger, internal_dict):    
+    try:
+        import lldb
+    except ImportError:
+        import os
+        os._exit(1)
     debugger.HandleCommand('command script add -f lldbhelper.runcommand runcommand')
     print("<END_COMMAND_OUTPUT>")
 
