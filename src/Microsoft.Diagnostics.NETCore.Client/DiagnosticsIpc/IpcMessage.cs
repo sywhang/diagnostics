@@ -111,7 +111,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
             using (var reader = new BinaryReader(stream, Encoding.UTF8, true))
             {
                 message.Header = IpcHeader.TryParse(reader);
+                int curReadTimeout = stream.ReadTimeout;
+                stream.ReadTimeout = 5 * 1000;
                 message.Payload = reader.ReadBytes(message.Header.Size - IpcHeader.HeaderSizeInBytes);
+                stream.ReadTimeout = curReadTimeout;
                 return message;
             }
         }
