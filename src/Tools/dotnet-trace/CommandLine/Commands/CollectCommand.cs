@@ -276,8 +276,16 @@ namespace Microsoft.Diagnostics.Tools.Trace
                                 }
                                 collectionStopped = true;
                                 durationTimer?.Stop();
-                                rundownRequested = true;
-                                session.Stop();
+
+                                try
+                                {
+                                    rundownRequested = true;
+                                    session.Stop();
+                                }
+                                catch (ServerNotAvailableException)
+                                {
+                                    Console.Out.WriteLine("The target process have exited already.");
+                                }
 
                                 do
                                 {
