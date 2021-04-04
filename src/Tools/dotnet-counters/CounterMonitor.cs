@@ -32,7 +32,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
         private string _output;
         private bool pauseCmdSet;
         private ManualResetEvent shouldExit;
-        private bool shouldResumeRuntime;
+        private bool _shouldResumeRuntime;
         private DiagnosticsClient _diagnosticsClient;
         private EventPipeSession _session;
 
@@ -115,8 +115,8 @@ namespace Microsoft.Diagnostics.Tools.Counters
                     _interval = refreshInterval;
                     _renderer = new ConsoleWriter();
                     _diagnosticsClient = holder.Client;
-                    shouldResumeRuntime = ProcessLauncher.Launcher.HasChildProc || !string.IsNullOrEmpty(diagnosticPort);
-                    int ret = await Start();
+                    _shouldResumeRuntime = ProcessLauncher.Launcher.HasChildProc || !string.IsNullOrEmpty(diagnosticPort);
+                    int ret = await Start(ct);
                     ProcessLauncher.Launcher.Cleanup();
                     return ret;
                 }
@@ -135,7 +135,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
         }
 
 
-        public async Task<int> Collect(CancellationToken ct, List<string> counter_list, string counters, IConsole console, int processId, int refreshInterval, CountersExportFormat format, string output, string name, string diagnosticPort)
+        public async Task<int> Collect(CancellationToken ct, List<string> counter_list, string counters, IConsole console, int processId, int refreshInterval, CountersExportFormat format, string output, string name, string diagnosticPort, int duration)
         {
             if (!ProcessLauncher.Launcher.HasChildProc && !CommandUtils.ValidateArgumentsForAttach(processId, name, diagnosticPort, out _processId))
             {
@@ -190,8 +190,20 @@ namespace Microsoft.Diagnostics.Tools.Counters
                         _console.Error.WriteLine($"The output format {format} is not a valid output format.");
                         return 0;
                     }
-                    shouldResumeRuntime = ProcessLauncher.Launcher.HasChildProc || !string.IsNullOrEmpty(diagnosticPort);
-                    int ret = await Start();
+                    _shouldResumeRuntime = ProcessLauncher.Launcher.HasChildProc || !string.IsNullOrEmpty(diagnosticPort);
+                    
+                    int ret;
+                    if (duration > 0)
+                    {
+                        var durationCt = new CancellationTokenSource();
+                        var newCt = CancellationTokenSource.CreateLinkedTokenSource(ct, durationCt);
+                        durationCt.CancelAfter(duration * 1000);
+                        ret = await Start(durationCt);
+                    }
+                    else
+                    {
+                        ret = await Start(ct);
+                    }
                     return ret;
                 }
                 catch (OperationCanceledException)
@@ -327,7 +339,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
             return providerString;
         }
 
-        private async Task<int> Start()
+        private async Task<int> Start(CancellationToken ct)
         {
             string providerString = BuildProviderString();
             if (providerString.Length == 0)
@@ -341,7 +353,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 try
                 {
                     _session = _diagnosticsClient.StartEventPipeSession(Trace.Extensions.ToProviders(providerString), false, 10);
-                    if (shouldResumeRuntime)
+                    if (_shouldResumeRuntime)
                     {
                         _diagnosticsClient.ResumeRuntime();
                     }
@@ -362,7 +374,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 {
                     shouldExit.Set();
                 }
-            });
+            }, ct);
 
             monitorTask.Start();
 

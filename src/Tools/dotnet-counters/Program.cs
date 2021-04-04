@@ -22,7 +22,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
 
     internal class Program
     {
-        delegate Task<int> CollectDelegate(CancellationToken ct, List<string> counter_list, string counters, IConsole console, int processId, int refreshInterval, CountersExportFormat format, string output, string processName, string port);
+        delegate Task<int> CollectDelegate(CancellationToken ct, List<string> counter_list, string counters, IConsole console, int processId, int refreshInterval, CountersExportFormat format, string output, string processName, string port, int duration);
         delegate Task<int> MonitorDelegate(CancellationToken ct, List<string> counter_list, string counters, IConsole console, int processId, int refreshInterval, string processName, string port);
 
         private static Command MonitorCommand() =>
@@ -44,7 +44,23 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 // Handler
                 HandlerDescriptor.FromDelegate((CollectDelegate)new CounterMonitor().Collect).GetCommandHandler(),
                 // Arguments and Options
-                CounterList(), CounterOption(), ProcessIdOption(), RefreshIntervalOption(), ExportFormatOption(), ExportFileNameOption(), NameOption(), DiagnosticPortOption()
+                CounterList(),
+                CounterOption(),
+                ProcessIdOption(),
+                RefreshIntervalOption(),
+                ExportFormatOption(),
+                ExportFileNameOption(),
+                NameOption(),
+                DiagnosticPortOption(),
+                DurationOption()
+            };
+
+        private static Option DurationOption() =>
+            new Option(
+                alias: "--duration",
+                description: "The number of seconds to collect counters for")
+            {
+                Argument = new Arugment<int>(name: "duration", getDefaultValue: () => -1)
             };
 
         private static Option NameOption() =>
