@@ -60,7 +60,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 alias: "--duration",
                 description: "The number of seconds to collect counters for")
             {
-                Argument = new Arugment<int>(name: "duration", getDefaultValue: () => -1)
+                Argument = new Argument<int>(name: "duration", getDefaultValue: () => -1)
             };
 
         private static Option NameOption() =>

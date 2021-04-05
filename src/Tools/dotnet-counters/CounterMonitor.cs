@@ -116,7 +116,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
                     _renderer = new ConsoleWriter();
                     _diagnosticsClient = holder.Client;
                     _shouldResumeRuntime = ProcessLauncher.Launcher.HasChildProc || !string.IsNullOrEmpty(diagnosticPort);
-                    int ret = await Start(ct);
+                    int ret = await Start();
                     ProcessLauncher.Launcher.Cleanup();
                     return ret;
                 }
@@ -195,14 +195,17 @@ namespace Microsoft.Diagnostics.Tools.Counters
                     int ret;
                     if (duration > 0)
                     {
-                        var durationCt = new CancellationTokenSource();
-                        var newCt = CancellationTokenSource.CreateLinkedTokenSource(ct, durationCt);
-                        durationCt.CancelAfter(duration * 1000);
-                        ret = await Start(durationCt);
+                        var durationTask = Task.Run(async () => {
+                            Console.WriteLine($"waiting for {duration} sec");
+                            await Task.Delay(duration * 1000);
+                            Console.WriteLine("cancelling.");
+                            shouldExit.Set();
+                        });
+                        ret = await Start();
                     }
                     else
                     {
-                        ret = await Start(ct);
+                        ret = await Start();
                     }
                     return ret;
                 }
@@ -339,7 +342,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
             return providerString;
         }
 
-        private async Task<int> Start(CancellationToken ct)
+        private async Task<int> Start()
         {
             string providerString = BuildProviderString();
             if (providerString.Length == 0)
@@ -374,7 +377,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 {
                     shouldExit.Set();
                 }
-            }, ct);
+            });
 
             monitorTask.Start();
 
